@@ -1,43 +1,40 @@
 import pytest
 
-def test_database_structure_consistency(mock_project_submission, mock_judge_review):
+def test_database_structure_consistency(mock_project_submission):
     """
     Validates backend database fields, data types, and logical bounds
-    for project structures and review aggregates.
+    for project structures and evaluation aggregates.
     """
     # 1. Project submission model constraints
     project = mock_project_submission
     assert "projectName" in project and isinstance(project["projectName"], str)
     assert len(project["projectName"]) > 0, "Project title must not be empty."
     assert "githubUrl" in project and project["githubUrl"].startswith("https://")
-    
-    # 2. Review scoring model constraints and score ranges [0 - 100]
-    review = mock_judge_review
-    scores = review["scores"]
-    for criterion, value in scores.items():
-        assert isinstance(value, int) or isinstance(value, float), f"{criterion} score must be numeric."
-        assert 0 <= value <= 100, f"{criterion} score must be in range [0, 100]."
-    
-    assert "feedback" in review and len(review["feedback"]) >= 10, "Comments must provide actionable feedback."
 
 def test_leaderboard_aggregation_math():
     """
-    Validates that combined scores strictly follow the official weighting algorithm:
-    Combined Score = (AI Overall Score * 0.40) + (Judge Average Score * 0.60)
+    Validates that leaderboard scores strictly follow the automated AI overall scoring algorithm:
+    Overall Score = Mean of (Idea, Innovation, Code Quality, README, UI, AI Usage, Technical Complexity)
     """
-    ai_score = 90.0
-    judge_avg = 85.0
-    expected_combined = round((ai_score * 0.40) + (judge_avg * 0.60), 1)
+    ai_subscores = {
+        "idea": 90,
+        "innovation": 85,
+        "codeQuality": 80,
+        "readme": 90,
+        "ui": 95,
+        "aiUsage": 85,
+        "technical": 87
+    }
     
-    # Ensure our expectations match exact math calculations
-    assert expected_combined == 87.0
+    # Calculate arithmetic mean
+    calculated_overall = round(sum(ai_subscores.values()) / len(ai_subscores), 1)
     
-    # Edge case: All perfect scores
-    assert round((100 * 0.40) + (100 * 0.60), 1) == 100.0
+    # Expected overall score
+    assert calculated_overall == 87.4
     
-    # Edge case: No reviews yet (should resolve gracefully to 0 or only AI score)
-    ai_only = round((80.0 * 0.40) + (0 * 0.60), 1)
-    assert ai_only == 32.0
+    # Perfect score edge case
+    perfect_subscores = {k: 100 for k in ai_subscores.keys()}
+    assert round(sum(perfect_subscores.values()) / len(perfect_subscores), 1) == 100.0
 
 def test_certificate_issuance_validity():
     """

@@ -1,24 +1,24 @@
-# Hackathon Evaluation and Judging Platform
+# Autonomous AI Hackathon Evaluation Platform
 
-An enterprise-grade, university-tailored SaaS platform designed to streamline hackathon project submissions, coordinate multi-criteria jury panels, execute automated GitHub repository static reviews, and generate real-time evaluations using the Google Gemini 3.5 Flash LLM engine.
+An enterprise-grade, university-tailored SaaS platform designed to streamline hackathon project submissions, execute fully automated GitHub repository static audits, run live performance checks on deployed applications, and generate comprehensive multi-criteria grading reports using the Google Gemini LLM engine.
 
-Developed for university hackathon organizers, student researchers, and industry adjudicators, this platform ensures academic integrity, eliminates grading bias, and delivers real-time combined leaderboards.
+Developed for university hackathon organizers and student developer clubs, this platform replaces slow, inconsistent human judging with instant, unbiased, high-fidelity AI evaluations.
 
 ---
 
 ## 🧭 Documentation Portal
 
-To explore the detailed design, administration, and usage guidelines of the Hackathon Evaluation and Judging Platform, navigate to the specialized documentation modules below:
+To explore the detailed design, administration, and usage guidelines of the Autonomous AI Hackathon Platform, navigate to the specialized documentation modules below:
 
 ### ⚙️ Technical & Engineering Reference
 *   **[System Architecture Documentation](./docs/system_architecture.md)** — Architectural diagrams, data entity relationships, backend module schemas, state transition patterns, and Gemini model pipelines.
-*   **[API Specification Manual](./docs/api_documentation.md)** — REST JSON API collection, route access levels (RBAC), request/response schemas, JWT authentication, and rate-limiting behaviors.
+*   **[API Specification Manual](./docs/api_documentation.md)** — REST JSON API collection, route access levels (RBAC), request/response schemas, JWT authentication, and bulk triggers.
 *   **[Deployment & Infrastructure Guide](./docs/deployment_guide.md)** — Guide to containerization, environment variable configurations, SQLite/PostgreSQL setups, and Cloud Run production staging.
+*   **[FastAPI & PostgreSQL Migration Plan](./docs/migration_plan.md)** — Complete blueprint for transitioning from the rapid-development Express/JSON stack to the high-performance Python FastAPI and PostgreSQL stack.
 
 ### 👥 User & Operations Manuals
 *   **[User (Participant) Guide](./docs/user_guide.md)** — Step-by-step instructions for student teams to register, submit repositories, track evaluation status, and upload project pitch decks.
-*   **[Judge & Jury Panel Guide](./docs/judge_guide.md)** — Core criteria definitions, scoring card workflows, comment threads, and interacting with the interactive **AI Judge Assistant**.
-*   **[Admin Operations Guide](./docs/admin_guide.md)** — Instructions for roles configuration, team detail modification, event schedulers, and downloading official ranked CSV reports.
+*   **[Admin Operations Guide](./docs/admin_guide.md)** — Instructions for roles configuration, team detail modification, event schedulers, triggering bulk AI evaluations, and downloading ranked CSV reports.
 
 ---
 
@@ -28,8 +28,8 @@ The platform is designed with a modern full-stack TypeScript architecture optimi
 
 ### Core Stack
 *   **Frontend Client:** React 18+ with TypeScript, Vite (bundling), Tailwind CSS v4 (design utility classes), and Lucide React (icon library).
-*   **Backend Application Server:** Express.js v4 serving JSON APIs with TypeScript execution via `tsx` (dev) and pre-compiled bundler pipelines using `esbuild`.
-*   **AI Engine:** Google GenAI SDK (`@google/genai`) utilizing the state-of-the-art **Gemini 3.5 Flash** model for automated code evaluations and natural language query analytics.
+*   **Backend Application Server:** Express.js serving JSON APIs with TypeScript execution via `tsx` (dev) and pre-compiled bundler pipelines using `esbuild`.
+*   **AI Engine:** Google GenAI SDK (`@google/genai`) utilizing the state-of-the-art **Gemini** model for automated code evaluations and natural language query analytics.
 *   **Database layer:** High-performance, lightweight in-memory JSON data manager (`src/db.ts`) designed for rapid prototyping, easily portable to PostgreSQL.
 
 ---
@@ -72,7 +72,7 @@ Get the development workspace up and running locally in less than 3 minutes.
    ```bash
    npm run dev
    ```
-   The application will boot up at `http://localhost:3000`. Open it in your web browser to sign up as a Participant, Judge, or Admin!
+   The application will boot up at `http://localhost:3000`. Open it in your web browser to sign up as a Participant or Admin!
 
 ---
 
@@ -81,14 +81,14 @@ Get the development workspace up and running locally in less than 3 minutes.
 The platform includes a robust testing matrix crossing Python backend endpoints and React client components.
 
 ### 🐍 Pytest API & Persistence Tests
-To verify database schemas, weighted average rankings, and API safety controllers:
+To verify database schemas, AI evaluation algorithms, and backend routers:
 ```bash
 pip install pytest requests
 pytest tests/pytest/ -v
 ```
 
 ### ⚛️ Frontend React Component Tests
-To verify form inputs, role routing, and chat assistance widgets:
+To verify form inputs, role routing, and admin dashboards:
 ```bash
 npm run test
 ```

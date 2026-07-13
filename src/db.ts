@@ -107,7 +107,6 @@ class LocalDB {
     // 1. Users
     const salt = bcrypt.genSaltSync(10);
     const adminPass = bcrypt.hashSync("admin123", salt);
-    const judgePass = bcrypt.hashSync("judge123", salt);
     const partPass = bcrypt.hashSync("part123", salt);
     
     const seededUsers: User[] = [
@@ -117,14 +116,6 @@ class LocalDB {
         passwordHash: adminPass,
         name: "Professor Angela Sterling",
         role: "Admin",
-        createdAt: new Date().toISOString()
-      },
-      {
-        id: "usr_judge",
-        email: "judge@hackathon.edu",
-        passwordHash: judgePass,
-        name: "Dr. Marcus Chen",
-        role: "Judge",
         createdAt: new Date().toISOString()
       },
       {
@@ -302,36 +293,17 @@ class LocalDB {
     ];
 
     // 8. Judge Reviews
-    const seededJudgeReviews: JudgeReview[] = [
-      {
-        id: "jr_ecosphere",
-        projectId: "proj_ecosphere",
-        judgeId: "usr_judge",
-        judgeName: "Dr. Marcus Chen",
-        scores: {
-          idea: 95,
-          innovation: 90,
-          codeQuality: 88,
-          readme: 80,
-          ui: 92,
-          aiUsage: 85,
-          technical: 90
-        },
-        overallScore: 88.6,
-        feedback: "Highly impressive workflow! The team presented a working application with real-time feedback. The presentation is professional. I recommend expanding the route optimization criteria to account for seasonal winds and ship specifications in the next iteration.",
-        submittedAt: new Date(Date.now() - 24 * 3600 * 1000).toISOString()
-      }
-    ];
+    const seededJudgeReviews: JudgeReview[] = [];
 
     // 9. Comments
     const seededComments: Comment[] = [
       {
         id: "comm_1",
         projectId: "proj_ecosphere",
-        userId: "usr_judge",
-        userName: "Dr. Marcus Chen",
-        userRole: "Judge",
-        content: "Outstanding submission GreenEarth Developers! Looking forward to seeing your live pitch tomorrow.",
+        userId: "usr_admin",
+        userName: "Professor Angela Sterling",
+        userRole: "Admin",
+        content: "Outstanding submission GreenEarth Developers! Your implementation of spatial carbon calculations is remarkable. The structure is highly polished.",
         createdAt: new Date(Date.now() - 23 * 3600 * 1000).toISOString()
       },
       {
@@ -340,7 +312,7 @@ class LocalDB {
         userId: "usr_part1",
         userName: "Alice Johnson",
         userRole: "Participant",
-        content: "Thank you Dr. Chen! We added custom responsive graphs to highlight the seasonal variance you mentioned.",
+        content: "Thank you Professor Sterling! We added responsive details to highlight the spatial calculations you mentioned.",
         createdAt: new Date(Date.now() - 22 * 3600 * 1000).toISOString()
       }
     ];
@@ -565,35 +537,25 @@ class LocalDB {
   }
 
   // LEADERBOARD CALCULATOR
-  getLeaderboard(): LeaderboardRanking[] {
-    return this.state.projects.map(proj => {
+  getLeaderboard(hackathonId?: string): LeaderboardRanking[] {
+    let filteredProjects = this.state.projects;
+    if (hackathonId) {
+      filteredProjects = filteredProjects.filter(proj => proj.hackathonId === hackathonId);
+    }
+
+    return filteredProjects.map(proj => {
       // Find AI evaluation
       const aiEval = this.state.aiEvaluations.find(e => e.projectId === proj.id);
       
-      // Find Judge evaluations
-      const reviews = this.state.judgeReviews.filter(r => r.projectId === proj.id);
-      
       const aiScore = aiEval ? aiEval.overallScore : null;
-      let judgeScoreSum = 0;
-      reviews.forEach(r => judgeScoreSum += r.overallScore);
-      const judgeAvg = reviews.length > 0 ? Number((judgeScoreSum / reviews.length).toFixed(1)) : null;
-
-      // Combined formula: 40% AI, 60% Judges. If no judges reviewed, rely 100% on AI. If no AI, 100% Judges. If neither, score is 0.
-      let combined = 0;
-      if (aiScore !== null && judgeAvg !== null) {
-        combined = Number((aiScore * 0.4 + judgeAvg * 0.6).toFixed(1));
-      } else if (aiScore !== null) {
-        combined = aiScore;
-      } else if (judgeAvg !== null) {
-        combined = judgeAvg;
-      }
+      const combined = aiScore !== null ? aiScore : 0;
 
       return {
         projectId: proj.id,
         projectName: proj.projectName,
         teamName: proj.teamName,
         aiOverallScore: aiScore,
-        judgeAverageScore: judgeAvg,
+        judgeAverageScore: null,
         combinedScore: combined,
         rank: 0 // Will be set after sorting
       };

@@ -1,8 +1,9 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { FolderGit, Upload, Globe, Link, Youtube, HelpCircle, Sparkles, Check, AlertCircle } from "lucide-react";
+import { HackathonEvent } from "../types";
 
 interface ProjectSubmissionFormProps {
-  token: string;
+  token?: string;
   onSuccess: () => void;
   onCancel: () => void;
 }
@@ -19,10 +20,34 @@ export function ProjectSubmissionForm({ token, onSuccess, onCancel }: ProjectSub
   const [demoVideoUrl, setDemoVideoUrl] = useState("");
   const [docFile, setDocFile] = useState<File | null>(null);
   
+  const [hackathonsList, setHackathonsList] = useState<HackathonEvent[]>([]);
+  const [selectedHackathonId, setSelectedHackathonId] = useState("");
   const [dragActive, setDragActive] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const fetchHackathons = async () => {
+      try {
+        const res = await fetch("/api/hackathons");
+        if (res.ok) {
+          const data: HackathonEvent[] = await res.json();
+          setHackathonsList(data);
+          // Auto select active hackathon or first one
+          const active = data.find(h => h.active);
+          if (active) {
+            setSelectedHackathonId(active.id);
+          } else if (data.length > 0) {
+            setSelectedHackathonId(data[0].id);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load hackathons", err);
+      }
+    };
+    fetchHackathons();
+  }, []);
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -73,15 +98,20 @@ export function ProjectSubmissionForm({ token, onSuccess, onCancel }: ProjectSub
         liveUrl,
         demoVideoUrl,
         presentationDocName: docFile ? docFile.name : "slides.pdf",
-        presentationDocUrl: docFile ? `https://example.com/uploads/${docFile.name}` : "https://example.com/slides.pdf"
+        presentationDocUrl: docFile ? `https://example.com/uploads/${docFile.name}` : "https://example.com/slides.pdf",
+        hackathonId: selectedHackathonId
       };
+
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json"
+      };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
 
       const res = await fetch("/api/projects", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
+        headers,
         body: JSON.stringify(body)
       });
 
@@ -118,6 +148,30 @@ export function ProjectSubmissionForm({ token, onSuccess, onCancel }: ProjectSub
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Hackathon Selection */}
+        <div>
+          <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Target Hackathon *</label>
+          <select
+            required
+            value={selectedHackathonId}
+            onChange={(e) => setSelectedHackathonId(e.target.value)}
+            className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none bg-white"
+          >
+            {hackathonsList.length === 0 ? (
+              <option value="">No hackathons configured yet</option>
+            ) : (
+              hackathonsList.map((hk) => (
+                <option key={hk.id} value={hk.id}>
+                  {hk.name} {hk.active ? "(Active Now)" : ""}
+                </option>
+              ))
+            )}
+          </select>
+          <p className="text-[11px] text-slate-400 mt-1">
+            Choose the specific event you are establishing this submission under.
+          </p>
+        </div>
+
         {/* Row 1: Project & Team Name */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>

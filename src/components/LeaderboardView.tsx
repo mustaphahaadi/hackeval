@@ -3,7 +3,7 @@ import { Trophy, Search, Star, Sparkles, UserCheck, RefreshCw, Award, ArrowUpRig
 import { LeaderboardRanking } from "../types";
 
 interface LeaderboardViewProps {
-  token: string;
+  token?: string;
   onSelectProject: (projectId: string) => void;
 }
 
@@ -17,9 +17,11 @@ export function LeaderboardView({ token, onSelectProject }: LeaderboardViewProps
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/leaderboard", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+      const res = await fetch("/api/leaderboard", { headers });
       if (!res.ok) throw new Error("Failed to fetch leaderboard data.");
       const data = await res.json();
       setLeaderboard(data);

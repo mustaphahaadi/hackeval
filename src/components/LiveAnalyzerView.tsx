@@ -7,7 +7,7 @@ import {
 import { LiveAnalysisResult, LiveAnalysisIssue } from "../types";
 
 interface LiveAnalyzerViewProps {
-  token: string;
+  token?: string;
 }
 
 export function LiveAnalyzerView({ token }: LiveAnalyzerViewProps) {
@@ -24,9 +24,11 @@ export function LiveAnalyzerView({ token }: LiveAnalyzerViewProps) {
 
   const fetchHistory = async () => {
     try {
-      const res = await fetch("/api/live-analyses", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+      const res = await fetch("/api/live-analyses", { headers });
       if (res.ok) {
         const data = await res.json();
         setHistory(data);
@@ -68,12 +70,16 @@ export function LiveAnalyzerView({ token }: LiveAnalyzerViewProps) {
     });
 
     try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json"
+      };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
       const res = await fetch("/api/analyze-website", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
+        headers,
         body: JSON.stringify({ url: urlToAnalyze })
       });
 

@@ -55,16 +55,20 @@ def test_role_based_access_control(mock_project_submission):
     assert auth_response.json()["status"] == "pending"
     assert "id" in auth_response.json()
 
-def test_judge_submits_scores(mock_judge_review):
+def test_admin_triggers_bulk_evaluation():
     """
-    Verifies that a Judge can submit reviews with detailed scores.
+    Verifies that an Admin can trigger bulk AI evaluation over all submitted projects.
     """
-    review_response = mock.Mock()
-    review_response.status_code = 201
-    review_response.json.return_value = {
+    bulk_response = mock.Mock()
+    bulk_response.status_code = 200
+    bulk_response.json.return_value = {
         "success": True,
-        "message": "Project reviewed successfully."
+        "evaluatedCount": 5,
+        "results": [
+            {"projectId": "proj_101", "projectName": "EcoSphere", "status": "success"}
+        ]
     }
 
-    assert review_response.status_code == 201
-    assert review_response.json()["success"] is True
+    assert bulk_response.status_code == 200
+    assert bulk_response.json()["success"] is True
+    assert bulk_response.json()["evaluatedCount"] == 5

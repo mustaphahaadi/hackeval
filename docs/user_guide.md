@@ -1,6 +1,6 @@
 # Participant & Student Team User Guide
 
-Welcome to the **Hackathon Platform**! This guide will walk you through registering your team, configuring your project submission metadata, uploading presentation files, and tracking your grading progress.
+Welcome to the **Autonomous AI Hackathon Platform**! This guide will walk you through registering your team, submitting your project metadata, uploading presentation slides, and reviewing your detailed AI-generated feedback.
 
 ---
 
@@ -45,11 +45,11 @@ Once authenticated, your central workspace focuses on the **Project Submission F
 
 *   **Project Title:** Give your innovation a descriptive, clear name.
 *   **Team Name:** The name of your hackathon group.
-*   **Team Members:** Enter comma-separated full names of all members (e.g. `Jane Doe, John Smith`) to guarantee correct academic certificate generations.
-*   **Problem Statement:** In 2-3 clear paragraphs, outline the exact engineering challenge your team set out to resolve.
+*   **Team Members:** Enter comma-separated full names of all members (e.g. `Jane Doe, John Smith`) to guarantee correct academic certificate listings.
+*   **Problem Statement:** In 1-2 clear paragraphs, outline the exact engineering challenge your team set out to resolve.
 *   **Project Description:** Detail your implementation stack, features, and core architecture.
-*   **GitHub Repository URL:** Provide a link to your public git repository. The Gemini AI engine uses this to run static file audits and assess structural criteria.
-*   **Live Demo URL (Optional):** If your app is live, share the link so judges can test interactive UI states.
+*   **GitHub Repository URL:** Provide a link to your public git repository. The Gemini AI evaluation engine uses this to run static file audits and assess structural criteria (e.g., code quality, readme structure).
+*   **Live Demo URL (Optional):** If your app is live, share the link so the automated engine can analyze its page speed, responsive structure, and accessibility.
 
 *Click **Submit Project** to save your submission.*
 
@@ -57,13 +57,12 @@ Once authenticated, your central workspace focuses on the **Project Submission F
 
 ## 📁 Step 3: Uploading Slide Decks & Presentations
 
-To provide jury members with detailed visual workflows or architectural schemas, utilize the integrated **Team Documents Uploader**:
+To provide the AI evaluator with detailed visual workflows or architectural schemas, utilize the integrated **Team Documents Uploader**:
 
 1.  Click the **Team Documents** tab in your dashboard.
 2.  Drag and drop your presentation PDF slide deck or click to select the file manually.
 3.  The system accepts files up to **10MB** with `.pdf` file endings.
-4.  A progress bar tracks uploading status.
-5.  Once finalized, your deck is attached to your team profile, where judges can review it side-by-side with your scoresheet.
+4.  Once finalized, your deck is attached to your team profile for evaluation analysis.
 
 ---
 
@@ -72,18 +71,18 @@ To provide jury members with detailed visual workflows or architectural schemas,
 As soon as your project is registered, your team dashboard moves into **Evaluation Review State**. Here is how to understand your scorecards:
 
 ### 1. The Timeline Indicators:
-*   `Pending Evaluation`: Your project is queued, awaiting AI model processing and jury panel assignments.
-*   `Scored`: The scoring is finalized. You will see detailed subscores on your dashboard.
+*   `Pending Evaluation`: Your project is queued, awaiting the admin to trigger the automated AI evaluation engine.
+*   `Scored`: The AI grading is finalized. You will see detailed subscores on your dashboard.
 
 ### 2. Metric Scorecards [0 - 100]:
 Your project is evaluated across 7 key pillars:
 1.  **Idea Validity:** Feasibility of the solution.
 2.  **Innovation:** Novelty and unique approach.
-3.  **Code Quality:** Readme structure, commenting, file modularity.
-4.  **Readme Completeness:** Documentation and user instructions.
-5.  **UI & UX design:** User experience, responsiveness, layout flow.
-6.  **AI Model Utilization:** Depth of smart API embeddings.
-7.  **Technical Complexity:** General engineering and programmatic depth.
+3.  **Code Quality:** Repository layout, commenting style, file modularity.
+4.  **Readme Completeness:** Documentation clarity and setup instructions.
+5.  **UI & UX design:** Design system, responsiveness, user journey.
+6.  **AI Model Utilization:** Depth of smart API embeddings or model usages.
+7.  **Technical Complexity:** General engineering depth and scale.
 
 ### 3. Feedback:
-Scroll down to read comprehensive, structured written feedback compiled from both the automated Google Gemini static evaluator and human judge commentary.
+Scroll down to read the comprehensive, structured written feedback compiled by the automated Google Gemini static evaluator, offering detailed technical recommendations and critique.

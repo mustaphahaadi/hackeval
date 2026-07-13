@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { LogIn, UserPlus, ShieldAlert, Award, Star, Laptop, Cpu } from "lucide-react";
 
 interface AuthScreenProps {
-  onLoginSuccess: (token: string, user: { id: string; name: string; email: string; role: "Admin" | "Judge" | "Participant" }) => void;
+  onLoginSuccess: (token: string, user: { id: string; name: string; email: string; role: "Admin" | "Participant" }) => void;
 }
 
 export function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
@@ -10,7 +10,7 @@ export function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
-  const [role, setRole] = useState<"Participant" | "Judge" | "Admin">("Participant");
+  const [role, setRole] = useState<"Participant" | "Admin">("Participant");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -80,7 +80,7 @@ export function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8">
+    <div className="flex flex-col justify-center py-6 px-4 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center items-center gap-2 text-indigo-600 mb-2">
           <Award className="w-10 h-10 stroke-[2]" />
@@ -147,8 +147,8 @@ export function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
             {isRegister && (
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Primary Role</label>
-                <div className="grid grid-cols-3 gap-3">
-                  {(["Participant", "Judge", "Admin"] as const).map((r) => (
+                <div className="grid grid-cols-2 gap-3">
+                  {(["Participant", "Admin"] as const).map((r) => (
                     <button
                       key={r}
                       type="button"
@@ -204,22 +204,15 @@ export function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
             <Cpu className="w-4 h-4" /> Rapid Dev Testing Presets
           </h4>
           <p className="text-xs text-amber-700 mb-3 leading-relaxed">
-            Quick-fill preconfigured mock database roles to immediately test the portal views, judges dashboards, and AI workflows.
+            Quick-fill preconfigured mock database roles to immediately test the participant portals, admin dashboards, and automated AI evaluation workflows.
           </p>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
               onClick={() => handleQuickLogin("Participant")}
               className="px-2 py-1.5 text-xs font-medium bg-white hover:bg-amber-100 border border-amber-300 text-amber-800 rounded-lg shadow-sm transition-colors text-center"
             >
               👩‍💻 Alice (Participant)
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickLogin("Judge")}
-              className="px-2 py-1.5 text-xs font-medium bg-white hover:bg-amber-100 border border-amber-300 text-amber-800 rounded-lg shadow-sm transition-colors text-center"
-            >
-              👨‍⚖️ Dr. Chen (Judge)
             </button>
             <button
               type="button"

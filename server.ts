@@ -74,6 +74,25 @@ const authenticateToken = (req: AuthRequest, res: Response, next: NextFunction):
   });
 };
 
+const optionalAuthenticateToken = (req: AuthRequest, res: Response, next: NextFunction): void => {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
+
+  if (!token) {
+    next();
+    return;
+  }
+
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) {
+      next();
+      return;
+    }
+    req.user = user as any;
+    next();
+  });
+};
+
 // Role authorization middleware
 const authorizeRoles = (...roles: UserRole[]) => {
   return (req: AuthRequest, res: Response, next: NextFunction): void => {
@@ -189,7 +208,7 @@ app.get("/api/auth/me", authenticateToken, (req: AuthRequest, res: Response) => 
 // --- SUBMISSION APIs ---
 
 // GET /projects
-app.get("/api/projects", authenticateToken, (req: AuthRequest, res: Response) => {
+app.get("/api/projects", optionalAuthenticateToken, (req: AuthRequest, res: Response) => {
   try {
     const projects = db.getProjects();
     res.json(projects);
@@ -199,7 +218,7 @@ app.get("/api/projects", authenticateToken, (req: AuthRequest, res: Response) =>
 });
 
 // GET /projects/{id}
-app.get("/api/projects/:id", authenticateToken, (req: AuthRequest, res: Response) => {
+app.get("/api/projects/:id", optionalAuthenticateToken, (req: AuthRequest, res: Response) => {
   try {
     const project = db.getProjects().find(p => p.id === req.params.id);
     if (!project) {
@@ -226,7 +245,7 @@ app.get("/api/projects/:id", authenticateToken, (req: AuthRequest, res: Response
 });
 
 // POST /projects
-app.post("/api/projects", authenticateToken, authorizeRoles("Participant", "Admin"), (req: AuthRequest, res: Response) => {
+app.post("/api/projects", optionalAuthenticateToken, (req: AuthRequest, res: Response) => {
   try {
     const {
       projectName,
@@ -292,14 +311,9 @@ app.put("/api/projects/:id", authenticateToken, (req: AuthRequest, res: Response
       return;
     }
 
-    // Role gate: Participants can only update their own team's project, Judges cannot edit projects, Admins can edit anything
+    // Role gate: Participants can only update their own team's project, Admins can edit anything
     if (req.user?.role === "Participant" && project.teamMembers.toLowerCase().indexOf(req.user.name.toLowerCase()) === -1) {
       res.status(403).json({ error: "You can only edit submissions belonging to your team members list." });
-      return;
-    }
-
-    if (req.user?.role === "Judge") {
-      res.status(403).json({ error: "Judges are not permitted to edit project submissions directly." });
       return;
     }
 
@@ -828,282 +842,278 @@ app.get("/api/github/info", authenticateToken, async (req: Request, res: Respons
 // --- AI EVALUATION ENGINE ---
 
 // POST /api/evaluate/{project_id}
-app.post("/api/evaluate/:project_id", authenticateToken, authorizeRoles("Admin", "Judge"), async (req: Request, res: Response) => {
+async function executeAIEvaluation(projectId: string): Promise<any> {
+  const project = db.getProjects().find(p => p.id === projectId);
+  if (!project) {
+    throw new Error("Project submission to evaluate was not found.");
+  }
+
+  // Perform live repo analysis to obtain fresh GitHub metrics & structure
+  let githubData = db.getGitHubAnalyses().find(g => g.projectId === projectId);
+  let analysisResult;
   try {
-    const projectId = req.params.project_id;
-    const project = db.getProjects().find(p => p.id === projectId);
-    if (!project) {
-      res.status(404).json({ error: "Project submission to evaluate was not found." });
-      return;
-    }
+    analysisResult = await analyzeGitHubRepo(project.githubUrl);
+  } catch (err: any) {
+    console.warn("Failed to perform live GitHub analysis, falling back to database cached/seeded state:", err.message);
+  }
 
-    // Perform live repo analysis to obtain fresh GitHub metrics & structure
-    let githubData = db.getGitHubAnalyses().find(g => g.projectId === projectId);
-    let analysisResult;
+  if (analysisResult) {
+    githubData = db.upsertGitHubAnalysis({
+      projectId,
+      ...analysisResult
+    });
+  } else if (!githubData) {
+    // Create a default fallback analysis so Gemini has structure to evaluate
+    githubData = db.upsertGitHubAnalysis({
+      projectId,
+      stars: 2,
+      forks: 0,
+      contributors: 1,
+      commits: 12,
+      languages: { "TypeScript": 92.1, "CSS": 7.9 },
+      readmeContent: `# ${project.projectName}\n${project.description}`,
+      repoStructure: ["src/", "src/components/", "package.json", "README.md"],
+      commitFrequency: "Avg 3 commits/week",
+      branches: ["main"],
+      pullRequests: { open: 0, closed: 0, total: 0 },
+      issues: { open: 1, closed: 2, total: 3 },
+      githubActions: { hasActions: false, workflows: [] },
+      license: "MIT",
+      hasGitignore: true,
+      readmeQuality: {
+        score: 60,
+        hasSetupGuide: true,
+        hasPrerequisites: false,
+        hasArchitectureSection: false,
+        missingSections: ["Prerequisites Declaration", "Architecture Section"]
+      },
+      repoHealthScore: 62,
+      developerPracticeScore: 55,
+      codeQualityObservations: [
+        "Standard initial repository layout.",
+        "Documentation contains basic setup guide instructions.",
+        "Gitignore setup correctly to protect build output folders."
+      ],
+      isPrivate: false,
+      isEmpty: false,
+      hasReadme: true,
+      errorState: null
+    });
+  }
+
+  // Extract actual source code samples from repository
+  const sourceSamples = await fetchSourceCodeSamples(project.githubUrl, githubData.repoStructure);
+
+  // Call Gemini to evaluate
+  if (ai) {
     try {
-      analysisResult = await analyzeGitHubRepo(project.githubUrl);
-    } catch (err: any) {
-      console.warn("Failed to perform live GitHub analysis, falling back to database cached/seeded state:", err.message);
-    }
-
-    if (analysisResult) {
-      githubData = db.upsertGitHubAnalysis({
-        projectId,
-        ...analysisResult
-      });
-    } else if (!githubData) {
-      // Create a default fallback analysis so Gemini has structure to evaluate
-      githubData = db.upsertGitHubAnalysis({
-        projectId,
-        stars: 2,
-        forks: 0,
-        contributors: 1,
-        commits: 12,
-        languages: { "TypeScript": 92.1, "CSS": 7.9 },
-        readmeContent: `# ${project.projectName}\n${project.description}`,
-        repoStructure: ["src/", "src/components/", "package.json", "README.md"],
-        commitFrequency: "Avg 3 commits/week",
-        branches: ["main"],
-        pullRequests: { open: 0, closed: 0, total: 0 },
-        issues: { open: 1, closed: 2, total: 3 },
-        githubActions: { hasActions: false, workflows: [] },
-        license: "MIT",
-        hasGitignore: true,
-        readmeQuality: {
-          score: 60,
-          hasSetupGuide: true,
-          hasPrerequisites: false,
-          hasArchitectureSection: false,
-          missingSections: ["Prerequisites Declaration", "Architecture Section"]
-        },
-        repoHealthScore: 62,
-        developerPracticeScore: 55,
-        codeQualityObservations: [
-          "Standard initial repository layout.",
-          "Documentation contains basic setup guide instructions.",
-          "Gitignore setup correctly to protect build output folders."
-        ],
-        isPrivate: false,
-        isEmpty: false,
-        hasReadme: true,
-        errorState: null
-      });
-    }
-
-    // Extract actual source code samples from repository
-    const sourceSamples = await fetchSourceCodeSamples(project.githubUrl, githubData.repoStructure);
-
-    // Call Gemini to evaluate
-    if (ai) {
-      try {
-        console.log(`Initiating real Gemini AI evaluation for project: ${project.projectName}`);
+      console.log(`Initiating real Gemini AI evaluation for project: ${project.projectName}`);
+      
+      const evaluationPrompt = `
+        You are an elite, highly critical computer science professor, senior software architect, and venture capitalist serving as the chief AI evaluation judge for our prestigious university hackathon.
         
-        const evaluationPrompt = `
-          You are an elite, highly critical computer science professor, senior software architect, and venture capitalist serving as the chief AI evaluation judge for our prestigious university hackathon.
-          
-          Evaluate the following student submission carefully. Analyze all the provided project documents, description, README content, repository metrics, workspace structure, and source code samples.
-          
-          PROJECT SUBMISSION DETAILS:
-          - Project Name: ${project.projectName}
-          - Team Name: ${project.teamName}
-          - Core Description: ${project.description}
-          - Problem Statement: ${project.problemStatement}
-          - Google AI Studio App URL: ${project.aiStudioUrl || "None provided"}
-          - Deployed Live App URL: ${project.liveUrl || "None provided"}
-          - Demo Pitch Video URL: ${project.demoVideoUrl || "None provided"}
-          
-          GITHUB REPOSITORY METRICS:
-          - Stars: ${githubData.stars} | Forks: ${githubData.forks}
-          - Contributors: ${githubData.contributors} | Commits: ${githubData.commits}
-          - Commit Frequency Activity: ${githubData.commitFrequency || "N/A"}
-          - Total Active Branches: ${githubData.branches?.length || 1} (${githubData.branches?.join(", ") || "main"})
-          - Pull Requests (PRs): Open: ${githubData.pullRequests?.open || 0}, Closed: ${githubData.pullRequests?.closed || 0}, Total: ${githubData.pullRequests?.total || 0}
-          - Tracked Issues: Open: ${githubData.issues?.open || 0}, Closed: ${githubData.issues?.closed || 0}, Total: ${githubData.issues?.total || 0}
-          - CI/CD Pipelines (GitHub Actions): ${githubData.githubActions?.hasActions ? "Yes" : "No"} (${githubData.githubActions?.workflows?.join(", ") || "No workflows"})
-          - Open Source License Compliance: ${githubData.license || "None declared"}
-          - Gitignore Protection configured: ${githubData.hasGitignore ? "Yes (.gitignore present)" : "No (missing .gitignore)"}
-          - Programmatic Repository Health Score: ${githubData.repoHealthScore}%
-          - Programmatic Developer Practice Score: ${githubData.developerPracticeScore}%
-          - Automated Static Code Observations: ${JSON.stringify(githubData.codeQualityObservations)}
-          - Automated README Quality Metrics: ${JSON.stringify(githubData.readmeQuality)}
-          - Code Languages Distribution: ${JSON.stringify(githubData.languages)}
-          - Project Workspace Layout & Structure (up to 50 paths): ${JSON.stringify(githubData.repoStructure)}
-          - README.md Documentation Content:
-          """
-          ${githubData.readmeContent.slice(0, 3000)}
-          """
-          
-          KEY SOURCE CODE SAMPLES FOR AUDIT:
-          """
-          ${sourceSamples || "No direct source files available. Evaluate based on workspace structure, languages, and description."}
-          """
-          
-          EVALUATION RUBRIC & SCORING DIMENSIONS (Strict 1 to 10 Scale):
-          Please grade the project out of 10 for each dimension, applying strict standards (e.g. 10/10 is perfect production quality, typical good projects score 7-8/10, average projects score 5-6/10):
-          
-          1. Innovation (20% weight):
-             Is the solution truly unique and original? Does it tackle a difficult problem with a fresh approach, or is it just a clone of an existing generic application?
-             
-          2. Technical Implementation (20% weight):
-             How sophisticated is the architectural execution? Is it a complete full-stack system, or is it purely client-side static layout? Are APIs, databases, or third-party platforms integrated?
-             
-          3. Code Quality (15% weight):
-             Analyze the source code samples and languages balance. Are there comments, clean separation of concerns, modern design patterns, and good file hygiene?
-             
-          4. README Documentation (10% weight):
-             Is the README structured? Does it have setup guides, usage examples, clear prerequisite declarations, or architectural explanations?
-             
-          5. GitHub Practices (10% weight):
-             Does the repository structure follow standard layout practices? Is the folder layout logical (e.g. src/, components/, tests/)? Do commit and contributor counts suggest good collaborative workflow?
-             
-          6. UI/UX (10% weight):
-             Based on the live URL, project description, and details, how polished and intuitive is the interface? Does it support modern layout cues, responsiveness, and clean interactive loops?
-             
-          7. AI Implementation (10% weight):
-             Is AI utilized meaningfully? Does it leverage advanced LLM capabilities, dynamic grounding (like Google Search/Maps), prompt templates, or agents? Or is it a trivial wrapper?
-             
-          8. Business Impact (5% weight):
-             Is there a viable real-world utility? Is the market sizing logical, is the problem statement resolved, and does the prototype offer real value?
-             
-          YOUR TASK:
-          1. Provide a score from 1 to 10 for each of the 8 dimensions.
-          2. Write a detailed, professional reason (1-2 sentences) justifying each score.
-          3. Calculate the weighted mathematical overall score out of 100 based on the weights:
-             Overall Score = (Innovation * 0.20 + Technical * 0.20 + Code Quality * 0.15 + README * 0.10 + GitHub Practices * 0.10 + UI/UX * 0.10 + AI Implementation * 0.10 + Business Impact * 0.05) * 10
-          4. Identify 3 concrete Strengths of the project.
-          5. Identify 3 concrete Weaknesses of the project.
-          6. Provide 3 highly actionable, specific improvement recommendations.
-          
-          Make sure your review is encouraging but academically honest and critical. Do not give inflated scores.
-        `;
+        Evaluate the following student submission carefully. Analyze all the provided project documents, description, README content, repository metrics, workspace structure, and source code samples.
+        
+        PROJECT SUBMISSION DETAILS:
+        - Project Name: ${project.projectName}
+        - Team Name: ${project.teamName}
+        - Core Description: ${project.description}
+        - Problem Statement: ${project.problemStatement}
+        - Google AI Studio App URL: ${project.aiStudioUrl || "None provided"}
+        - Deployed Live App URL: ${project.liveUrl || "None provided"}
+        - Demo Pitch Video URL: ${project.demoVideoUrl || "None provided"}
+        
+        GITHUB REPOSITORY METRICS:
+        - Stars: ${githubData.stars} | Forks: ${githubData.forks}
+        - Contributors: ${githubData.contributors} | Commits: ${githubData.commits}
+        - Commit Frequency Activity: ${githubData.commitFrequency || "N/A"}
+        - Total Active Branches: ${githubData.branches?.length || 1} (${githubData.branches?.join(", ") || "main"})
+        - Pull Requests (PRs): Open: ${githubData.pullRequests?.open || 0}, Closed: ${githubData.pullRequests?.closed || 0}, Total: ${githubData.pullRequests?.total || 0}
+        - Tracked Issues: Open: ${githubData.issues?.open || 0}, Closed: ${githubData.issues?.closed || 0}, Total: ${githubData.issues?.total || 0}
+        - CI/CD Pipelines (GitHub Actions): ${githubData.githubActions?.hasActions ? "Yes" : "No"} (${githubData.githubActions?.workflows?.join(", ") || "No workflows"})
+        - Open Source License Compliance: ${githubData.license || "None declared"}
+        - Gitignore Protection configured: ${githubData.hasGitignore ? "Yes (.gitignore present)" : "No (missing .gitignore)"}
+        - Programmatic Repository Health Score: ${githubData.repoHealthScore}%
+        - Programmatic Developer Practice Score: ${githubData.developerPracticeScore}%
+        - Automated Static Code Observations: ${JSON.stringify(githubData.codeQualityObservations)}
+        - Automated README Quality Metrics: ${JSON.stringify(githubData.readmeQuality)}
+        - Code Languages Distribution: ${JSON.stringify(githubData.languages)}
+        - Project Workspace Layout & Structure (up to 50 paths): ${JSON.stringify(githubData.repoStructure)}
+        - README.md Documentation Content:
+        """
+        ${githubData.readmeContent.slice(0, 3000)}
+        """
+        
+        KEY SOURCE CODE SAMPLES FOR AUDIT:
+        """
+        ${sourceSamples || "No direct source files available. Evaluate based on workspace structure, languages, and description."}
+        """
+        
+        EVALUATION RUBRIC & SCORING DIMENSIONS (Strict 1 to 10 Scale):
+        Please grade the project out of 10 for each dimension, applying strict standards (e.g. 10/10 is perfect production quality, typical good projects score 7-8/10, average projects score 5-6/10):
+        
+        1. Innovation (20% weight):
+           Is the solution truly unique and original? Does it tackle a difficult problem with a fresh approach, or is it just a clone of an existing generic application?
+           
+        2. Technical Implementation (20% weight):
+           How sophisticated is the architectural execution? Is it a complete full-stack system, or is it purely client-side static layout? Are APIs, databases, or third-party platforms integrated?
+           
+        3. Code Quality (15% weight):
+           Analyze the source code samples and languages balance. Are there comments, clean separation of concerns, modern design patterns, and good file hygiene?
+           
+        4. README Documentation (10% weight):
+           Is the README structured? Does it have setup guides, usage examples, clear prerequisite declarations, or architectural explanations?
+           
+        5. GitHub Practices (10% weight):
+           Does the repository structure follow standard layout practices? Is the folder layout logical (e.g. src/, components/, tests/)? Do commit and contributor counts suggest good collaborative workflow?
+           
+        6. UI/UX (10% weight):
+           Based on the live URL, project description, and details, how polished and intuitive is the interface? Does it support modern layout cues, responsiveness, and clean interactive loops?
+           
+        7. AI Implementation (10% weight):
+           Is AI utilized meaningfully? Does it leverage advanced LLM capabilities, dynamic grounding (like Google Search/Maps), prompt templates, or agents? Or is it a trivial wrapper?
+           
+        8. Business Impact (5% weight):
+           Is there a viable real-world utility? Is the market sizing logical, is the problem statement resolved, and does the prototype offer real value?
+           
+        YOUR TASK:
+        1. Provide a score from 1 to 10 for each of the 8 dimensions.
+        2. Write a detailed, professional reason (1-2 sentences) justifying each score.
+        3. Calculate the weighted mathematical overall score out of 100 based on the weights:
+           Overall Score = (Innovation * 0.20 + Technical * 0.20 + Code Quality * 0.15 + README * 0.10 + GitHub Practices * 0.10 + UI/UX * 0.10 + AI Implementation * 0.10 + Business Impact * 0.05) * 10
+        4. Identify 3 concrete Strengths of the project.
+        5. Identify 3 concrete Weaknesses of the project.
+        6. Provide 3 highly actionable, specific improvement recommendations.
+        
+        Make sure your review is encouraging but academically honest and critical. Do not give inflated scores.
+      `;
 
-        const response = await ai.models.generateContent({
-          model: "gemini-3.5-flash",
-          contents: evaluationPrompt,
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                innovation: {
-                  type: Type.OBJECT,
-                  properties: {
-                    score: { type: Type.INTEGER, description: "Score from 1 to 10" },
-                    reason: { type: Type.STRING, description: "Detailed justification for the innovation score" }
-                  },
-                  required: ["score", "reason"]
+      const response = await ai.models.generateContent({
+        model: "gemini-3.5-flash",
+        contents: evaluationPrompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              innovation: {
+                type: Type.OBJECT,
+                properties: {
+                  score: { type: Type.INTEGER, description: "Score from 1 to 10" },
+                  reason: { type: Type.STRING, description: "Detailed justification for the innovation score" }
                 },
-                technical: {
-                  type: Type.OBJECT,
-                  properties: {
-                    score: { type: Type.INTEGER, description: "Score from 1 to 10" },
-                    reason: { type: Type.STRING, description: "Detailed justification for the technical implementation score" }
-                  },
-                  required: ["score", "reason"]
-                },
-                code_quality: {
-                  type: Type.OBJECT,
-                  properties: {
-                    score: { type: Type.INTEGER, description: "Score from 1 to 10" },
-                    reason: { type: Type.STRING, description: "Detailed justification for the code quality score" }
-                  },
-                  required: ["score", "reason"]
-                },
-                readme: {
-                  type: Type.OBJECT,
-                  properties: {
-                    score: { type: Type.INTEGER, description: "Score from 1 to 10" },
-                    reason: { type: Type.STRING, description: "Detailed justification for the README documentation score" }
-                  },
-                  required: ["score", "reason"]
-                },
-                github_practices: {
-                  type: Type.OBJECT,
-                  properties: {
-                    score: { type: Type.INTEGER, description: "Score from 1 to 10" },
-                    reason: { type: Type.STRING, description: "Detailed justification for the GitHub practices score" }
-                  },
-                  required: ["score", "reason"]
-                },
-                ui_ux: {
-                  type: Type.OBJECT,
-                  properties: {
-                    score: { type: Type.INTEGER, description: "Score from 1 to 10" },
-                    reason: { type: Type.STRING, description: "Detailed justification for the UI/UX score" }
-                  },
-                  required: ["score", "reason"]
-                },
-                ai_implementation: {
-                  type: Type.OBJECT,
-                  properties: {
-                    score: { type: Type.INTEGER, description: "Score from 1 to 10" },
-                    reason: { type: Type.STRING, description: "Detailed justification for the AI implementation score" }
-                  },
-                  required: ["score", "reason"]
-                },
-                business_impact: {
-                  type: Type.OBJECT,
-                  properties: {
-                    score: { type: Type.INTEGER, description: "Score from 1 to 10" },
-                    reason: { type: Type.STRING, description: "Detailed justification for the business impact score" }
-                  },
-                  required: ["score", "reason"]
-                },
-                overall_score: { 
-                  type: Type.INTEGER, 
-                  description: "Calculated overall score out of 100 based on the weighted averages" 
-                },
-                strengths: {
-                  type: Type.ARRAY,
-                  items: { type: Type.STRING },
-                  description: "Key strengths identified in the project"
-                },
-                weaknesses: {
-                  type: Type.ARRAY,
-                  items: { type: Type.STRING },
-                  description: "Key weaknesses or areas of improvement identified in the project"
-                },
-                recommendations: {
-                  type: Type.ARRAY,
-                  items: { type: Type.STRING },
-                  description: "Specific improvement recommendations"
-                }
+                required: ["score", "reason"]
               },
-              required: [
-                "innovation", "technical", "code_quality", "readme", "github_practices",
-                "ui_ux", "ai_implementation", "business_impact", "overall_score",
-                "strengths", "weaknesses", "recommendations"
-              ]
-            }
+              technical: {
+                type: Type.OBJECT,
+                properties: {
+                  score: { type: Type.INTEGER, description: "Score from 1 to 10" },
+                  reason: { type: Type.STRING, description: "Detailed justification for the technical implementation score" }
+                },
+                required: ["score", "reason"]
+              },
+              code_quality: {
+                type: Type.OBJECT,
+                properties: {
+                  score: { type: Type.INTEGER, description: "Score from 1 to 10" },
+                  reason: { type: Type.STRING, description: "Detailed justification for the code quality score" }
+                },
+                required: ["score", "reason"]
+              },
+              readme: {
+                type: Type.OBJECT,
+                properties: {
+                  score: { type: Type.INTEGER, description: "Score from 1 to 10" },
+                  reason: { type: Type.STRING, description: "Detailed justification for the README documentation score" }
+                },
+                required: ["score", "reason"]
+              },
+              github_practices: {
+                type: Type.OBJECT,
+                properties: {
+                  score: { type: Type.INTEGER, description: "Score from 1 to 10" },
+                  reason: { type: Type.STRING, description: "Detailed justification for the GitHub practices score" }
+                },
+                required: ["score", "reason"]
+              },
+              ui_ux: {
+                type: Type.OBJECT,
+                properties: {
+                  score: { type: Type.INTEGER, description: "Score from 1 to 10" },
+                  reason: { type: Type.STRING, description: "Detailed justification for the UI/UX score" }
+                },
+                required: ["score", "reason"]
+              },
+              ai_implementation: {
+                type: Type.OBJECT,
+                properties: {
+                  score: { type: Type.INTEGER, description: "Score from 1 to 10" },
+                  reason: { type: Type.STRING, description: "Detailed justification for the AI implementation score" }
+                },
+                required: ["score", "reason"]
+              },
+              business_impact: {
+                type: Type.OBJECT,
+                properties: {
+                  score: { type: Type.INTEGER, description: "Score from 1 to 10" },
+                  reason: { type: Type.STRING, description: "Detailed justification for the business impact score" }
+                },
+                required: ["score", "reason"]
+              },
+              overall_score: { 
+                type: Type.INTEGER, 
+                description: "Calculated overall score out of 100 based on the weighted averages" 
+              },
+              strengths: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+                description: "Key strengths identified in the project"
+              },
+              weaknesses: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+                description: "Key weaknesses or areas of improvement identified in the project"
+              },
+              recommendations: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+                description: "Specific improvement recommendations"
+              }
+            },
+            required: [
+              "innovation", "technical", "code_quality", "readme", "github_practices",
+              "ui_ux", "ai_implementation", "business_impact", "overall_score",
+              "strengths", "weaknesses", "recommendations"
+            ]
           }
-        });
+        }
+      });
 
-        const jsonText = response.text.trim();
-        const evalResults = JSON.parse(jsonText);
+      const jsonText = response.text.trim();
+      const evalResults = JSON.parse(jsonText);
 
-        // Convert the 1-10 scores to the 0-100 scale stored in the database
-        const ideaScore = evalResults.business_impact.score * 10;
-        const innovationScore = evalResults.innovation.score * 10;
-        const codeQualityScore = evalResults.code_quality.score * 10;
-        const readmeScore = evalResults.readme.score * 10;
-        const uiScore = evalResults.ui_ux.score * 10;
-        const aiUsageScore = evalResults.ai_implementation.score * 10;
-        const technicalScore = evalResults.technical.score * 10;
+      // Convert the 1-10 scores to the 0-100 scale stored in the database
+      const ideaScore = evalResults.business_impact.score * 10;
+      const innovationScore = evalResults.innovation.score * 10;
+      const codeQualityScore = evalResults.code_quality.score * 10;
+      const readmeScore = evalResults.readme.score * 10;
+      const uiScore = evalResults.ui_ux.score * 10;
+      const aiUsageScore = evalResults.ai_implementation.score * 10;
+      const technicalScore = evalResults.technical.score * 10;
 
-        // PROGRAMMATIC WEIGHTED AVERAGE CALCULATION
-        const calculatedOverall = Number((
-          (evalResults.innovation.score * 0.20 +
-           evalResults.technical.score * 0.20 +
-           evalResults.code_quality.score * 0.15 +
-           evalResults.readme.score * 0.10 +
-           evalResults.github_practices.score * 0.10 +
-           evalResults.ui_ux.score * 0.10 +
-           evalResults.ai_implementation.score * 0.10 +
-           evalResults.business_impact.score * 0.05) * 10
-        ).toFixed(1));
+      // PROGRAMMATIC WEIGHTED AVERAGE CALCULATION
+      const calculatedOverall = Number((
+        (evalResults.innovation.score * 0.20 +
+         evalResults.technical.score * 0.20 +
+         evalResults.code_quality.score * 0.15 +
+         evalResults.readme.score * 0.10 +
+         evalResults.github_practices.score * 0.10 +
+         evalResults.ui_ux.score * 0.10 +
+         evalResults.ai_implementation.score * 0.10 +
+         evalResults.business_impact.score * 0.05) * 10
+      ).toFixed(1));
 
-        // Format rich feedback text containing detailed justifications, strengths, weaknesses, and recommendations
-        const feedbackText = `
+      const feedbackText = `
 ### Overall Evaluation Justifications
 • **Innovation (${evalResults.innovation.score}/10):** ${evalResults.innovation.reason}
 • **Technical Complexity (${evalResults.technical.score}/10):** ${evalResults.technical.reason}
@@ -1124,79 +1134,75 @@ ${evalResults.weaknesses.map((w: string) => `• ${w}`).join("\n")}
 ${evalResults.recommendations.map((r: string) => `• ${r}`).join("\n")}
 `.trim();
 
-        const aiEval = db.upsertAIEvaluation({
-          projectId,
-          ideaScore,
-          innovationScore,
-          codeQualityScore,
-          readmeScore,
-          uiScore,
-          aiUsageScore,
-          technicalScore,
-          overallScore: calculatedOverall,
-          feedback: feedbackText
-        });
-
-        res.json(aiEval);
-        return;
-      } catch (geminiError: any) {
-        console.error("Gemini API execution failed, triggering dynamic fallback logic:", geminiError);
-      }
+      return db.upsertAIEvaluation({
+        projectId,
+        ideaScore,
+        innovationScore,
+        codeQualityScore,
+        readmeScore,
+        uiScore,
+        aiUsageScore,
+        technicalScore,
+        overallScore: calculatedOverall,
+        feedback: feedbackText
+      });
+    } catch (geminiError: any) {
+      console.error("Gemini API execution failed, triggering dynamic fallback logic:", geminiError);
     }
+  }
 
-    // Dynamic AI Fallback Score Generator (When API Key is not configured)
-    console.warn("Using smart algorithmic fallback for AI evaluation generator.");
-    
-    const baseWordCount = project.description.split(" ").length;
-    const isDocUploaded = !!project.presentationDocUrl;
-    
-    const ideaScoreVal = Math.min(10, Math.max(6, 7 + (baseWordCount % 3) + (isDocUploaded ? 1 : 0)));
-    const innovationScoreVal = Math.min(10, Math.max(6, 6 + (githubData.stars % 4) + (project.projectName.toLowerCase().includes("ai") ? 1 : 0)));
-    const codeQualityScoreVal = Math.min(10, Math.max(6, 7 + (githubData.commits % 3) + (githubData.languages["TypeScript"] ? 1 : 0)));
-    const readmeScoreVal = Math.min(10, Math.max(6, 6 + (githubData.readmeContent.length % 4)));
-    const uiScoreVal = Math.min(10, Math.max(6, 7 + (project.liveUrl ? 1 : 0)));
-    const aiUsageScoreVal = Math.min(10, Math.max(5, 6 + (project.aiStudioUrl ? 2 : 0) + (project.description.toLowerCase().includes("gemini") ? 1 : 0)));
-    const technicalScoreVal = Math.min(10, Math.max(6, 6 + (githubData.repoStructure.length % 3)));
-    const businessImpactVal = Math.min(10, Math.max(6, 7 + (isDocUploaded ? 1 : 0)));
+  // Fallback Logic
+  console.warn("Using smart algorithmic fallback for AI evaluation generator.");
+  const baseWordCount = project.description.split(" ").length;
+  const isDocUploaded = !!project.presentationDocUrl;
+  
+  const ideaScoreVal = Math.min(10, Math.max(6, 7 + (baseWordCount % 3) + (isDocUploaded ? 1 : 0)));
+  const innovationScoreVal = Math.min(10, Math.max(6, 6 + (githubData.stars % 4) + (project.projectName.toLowerCase().includes("ai") ? 1 : 0)));
+  const codeQualityScoreVal = Math.min(10, Math.max(6, 7 + (githubData.commits % 3) + (githubData.languages["TypeScript"] ? 1 : 0)));
+  const readmeScoreVal = Math.min(10, Math.max(6, 6 + (githubData.readmeContent.length % 4)));
+  const uiScoreVal = Math.min(10, Math.max(6, 7 + (project.liveUrl ? 1 : 0)));
+  const aiUsageScoreVal = Math.min(10, Math.max(5, 6 + (project.aiStudioUrl ? 2 : 0) + (project.description.toLowerCase().includes("gemini") ? 1 : 0)));
+  const technicalScoreVal = Math.min(10, Math.max(6, 6 + (githubData.repoStructure.length % 3)));
+  const businessImpactVal = Math.min(10, Math.max(6, 7 + (isDocUploaded ? 1 : 0)));
 
-    const calculatedOverall = Number((
-      (innovationScoreVal * 0.20 +
-       technicalScoreVal * 0.20 +
-       codeQualityScoreVal * 0.15 +
-       readmeScoreVal * 0.10 +
-       codeQualityScoreVal * 0.10 + // GitHub Practices shares Code Quality in Fallback
-       uiScoreVal * 0.10 +
-       aiUsageScoreVal * 0.10 +
-       businessImpactVal * 0.05) * 10
-    ).toFixed(1));
+  const calculatedOverall = Number((
+    (innovationScoreVal * 0.20 +
+     technicalScoreVal * 0.20 +
+     codeQualityScoreVal * 0.15 +
+     readmeScoreVal * 0.10 +
+     codeQualityScoreVal * 0.10 + // GitHub Practices shares Code Quality in Fallback
+     uiScoreVal * 0.10 +
+     aiUsageScoreVal * 0.10 +
+     businessImpactVal * 0.05) * 10
+  ).toFixed(1));
 
-    const fallbackResults = {
-      innovation: { score: innovationScoreVal, reason: "Excellent approach tackling the target domain using modern container routing loops." },
-      technical: { score: technicalScoreVal, reason: "Solid web architecture utilizing scalable routes, but could benefit from an active DB model." },
-      code_quality: { score: codeQualityScoreVal, reason: "Highly organized codebase layout adhering to robust type safety and clean ES6 standard patterns." },
-      readme: { score: readmeScoreVal, reason: "Detailed documentation with comprehensive installation instructions and list of API environment variables." },
-      github_practices: { score: codeQualityScoreVal, reason: "Logical folder layout and clean separation of client/server assets." },
-      ui_ux: { score: uiScoreVal, reason: "Clean design motifs, highly suited for real-world analytical operator interfaces." },
-      ai_implementation: { score: aiUsageScoreVal, reason: "Sensible usage of AI prompts, though advanced context grounding has room for growth." },
-      business_impact: { score: businessImpactVal, reason: "Excellent commercial potential addressing critical industry data transparency gaps." },
-      strengths: [
-        "Rigorous workspace structure with modern TypeScript configurations.",
-        "Detailed readme files detailing system variables and run procedures.",
-        "Highly practical problem statement addressing a genuine industry friction."
-      ],
-      weaknesses: [
-        "Absence of automated testing suites (such as Vitest or Jest).",
-        "Relies heavily on client-side state hooks which clear upon browser refreshes.",
-        "Visual responsive design margins could undergo further refinement."
-      ],
-      recommendations: [
-        "Integrate automated pipeline scripts to evaluate and catch regression bugs.",
-        "Add localized translations to make the platform accessible to global hackathon environments.",
-        "Optimize viewport contrast and tap-target sizes on smaller mobile screens."
-      ]
-    };
+  const fallbackResults = {
+    innovation: { score: innovationScoreVal, reason: "Excellent approach tackling the target domain using modern container routing loops." },
+    technical: { score: technicalScoreVal, reason: "Solid web architecture utilizing scalable routes, but could benefit from an active DB model." },
+    code_quality: { score: codeQualityScoreVal, reason: "Highly organized codebase layout adhering to robust type safety and clean ES6 standard patterns." },
+    readme: { score: readmeScoreVal, reason: "Detailed documentation with comprehensive installation instructions and list of API environment variables." },
+    github_practices: { score: codeQualityScoreVal, reason: "Logical folder layout and clean separation of client/server assets." },
+    ui_ux: { score: uiScoreVal, reason: "Clean design motifs, highly suited for real-world analytical operator interfaces." },
+    ai_implementation: { score: aiUsageScoreVal, reason: "Sensible usage of AI prompts, though advanced context grounding has room for growth." },
+    business_impact: { score: businessImpactVal, reason: "Excellent commercial potential addressing critical industry data friction gaps." },
+    strengths: [
+      "Rigorous workspace structure with modern TypeScript configurations.",
+      "Detailed readme files detailing system variables and run procedures.",
+      "Highly practical problem statement addressing a genuine industry friction."
+    ],
+    weaknesses: [
+      "Absence of automated testing suites (such as Vitest or Jest).",
+      "Relies heavily on client-side state hooks which clear upon browser refreshes.",
+      "Visual responsive design margins could undergo further refinement."
+    ],
+    recommendations: [
+      "Integrate automated pipeline scripts to evaluate and catch regression bugs.",
+      "Add localized translations to make the platform accessible to global hackathon environments.",
+      "Optimize viewport contrast and tap-target sizes on smaller mobile screens."
+    ]
+  };
 
-    const feedbackText = `
+  const feedbackText = `
 ### Overall Evaluation Justifications
 • **Innovation (${fallbackResults.innovation.score}/10):** ${fallbackResults.innovation.reason}
 • **Technical Complexity (${fallbackResults.technical.score}/10):** ${fallbackResults.technical.reason}
@@ -1217,20 +1223,44 @@ ${fallbackResults.weaknesses.map((w: string) => `• ${w}`).join("\n")}
 ${fallbackResults.recommendations.map((r: string) => `• ${r}`).join("\n")}
 `.trim();
 
-    const aiEval = db.upsertAIEvaluation({
-      projectId,
-      ideaScore: fallbackResults.business_impact.score * 10,
-      innovationScore: fallbackResults.innovation.score * 10,
-      codeQualityScore: fallbackResults.code_quality.score * 10,
-      readmeScore: fallbackResults.readme.score * 10,
-      uiScore: fallbackResults.ui_ux.score * 10,
-      aiUsageScore: fallbackResults.ai_implementation.score * 10,
-      technicalScore: fallbackResults.technical.score * 10,
-      overallScore: calculatedOverall,
-      feedback: feedbackText
-    });
+  return db.upsertAIEvaluation({
+    projectId,
+    ideaScore: fallbackResults.business_impact.score * 10,
+    innovationScore: fallbackResults.innovation.score * 10,
+    codeQualityScore: fallbackResults.code_quality.score * 10,
+    readmeScore: fallbackResults.readme.score * 10,
+    uiScore: fallbackResults.ui_ux.score * 10,
+    aiUsageScore: fallbackResults.ai_implementation.score * 10,
+    technicalScore: fallbackResults.technical.score * 10,
+    overallScore: calculatedOverall,
+    feedback: feedbackText
+  });
+}
 
+app.post("/api/evaluate/:project_id", authenticateToken, authorizeRoles("Admin"), async (req: Request, res: Response) => {
+  try {
+    const projectId = req.params.project_id;
+    const aiEval = await executeAIEvaluation(projectId);
     res.json(aiEval);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/evaluate-all", authenticateToken, authorizeRoles("Admin"), async (req: Request, res: Response) => {
+  try {
+    const hackathonId = req.body.hackathonId || req.query.hackathonId;
+    let projects = db.getProjects();
+    if (hackathonId) {
+      projects = projects.filter(p => p.hackathonId === hackathonId);
+    }
+    const results = [];
+    for (const project of projects) {
+      console.log(`Mass Evaluation: grading ${project.projectName} (${project.id}) for hackathon ${hackathonId || 'all'}...`);
+      const aiEval = await executeAIEvaluation(project.id);
+      results.push(aiEval);
+    }
+    res.json({ success: true, evaluatedCount: projects.length, results });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -1240,7 +1270,7 @@ ${fallbackResults.recommendations.map((r: string) => `• ${r}`).join("\n")}
 // --- JUDGE EVALUATION / REVIEWS ---
 
 // POST /api/reviews
-app.post("/api/reviews", authenticateToken, authorizeRoles("Judge", "Admin"), (req: AuthRequest, res: Response) => {
+app.post("/api/reviews", authenticateToken, authorizeRoles("Admin"), (req: AuthRequest, res: Response) => {
   try {
     const { projectId, scores, feedback } = req.body;
     if (!projectId || !scores || !feedback) {
@@ -1287,7 +1317,8 @@ app.post("/api/reviews", authenticateToken, authorizeRoles("Judge", "Admin"), (r
 // GET /api/leaderboard
 app.get("/api/leaderboard", (req: Request, res: Response) => {
   try {
-    const leaderboard = db.getLeaderboard();
+    const hackathonId = req.query.hackathonId as string;
+    const leaderboard = db.getLeaderboard(hackathonId);
     res.json(leaderboard);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -1298,7 +1329,7 @@ app.get("/api/leaderboard", (req: Request, res: Response) => {
 // --- COMMENTS ---
 
 // POST /api/comments
-app.post("/api/comments", authenticateToken, (req: AuthRequest, res: Response) => {
+app.post("/api/comments", optionalAuthenticateToken, (req: AuthRequest, res: Response) => {
   try {
     const { projectId, content } = req.body;
     if (!projectId || !content) {
@@ -1309,9 +1340,9 @@ app.post("/api/comments", authenticateToken, (req: AuthRequest, res: Response) =
     const comment = db.addComment({
       projectId,
       content,
-      userId: req.user!.id,
-      userName: req.user!.name,
-      userRole: req.user!.role
+      userId: req.user?.id || "guest_" + Math.random().toString(36).substring(2, 9),
+      userName: req.user?.name || "Anonymous Guest",
+      userRole: req.user?.role || "Participant"
     });
 
     res.status(201).json(comment);
@@ -1321,10 +1352,10 @@ app.post("/api/comments", authenticateToken, (req: AuthRequest, res: Response) =
 });
 
 
-// --- AI JUDGE ASSISTANT ---
+// --- AI EVALUATION ASSISTANT ---
 
 // POST /api/ai-judge-assistant
-app.post("/api/ai-judge-assistant", authenticateToken, authorizeRoles("Judge", "Admin"), async (req: AuthRequest, res: Response) => {
+app.post("/api/ai-judge-assistant", authenticateToken, authorizeRoles("Admin"), async (req: AuthRequest, res: Response) => {
   try {
     const { query } = req.body;
     if (!query) {
@@ -1526,12 +1557,17 @@ app.post("/api/admin/certificates", authenticateToken, authorizeRoles("Admin"), 
 });
 
 // GET /api/certificates
-app.get("/api/certificates", authenticateToken, (req: AuthRequest, res: Response) => {
+app.get("/api/certificates", optionalAuthenticateToken, (req: AuthRequest, res: Response) => {
   try {
     let list = db.getCertificates();
     // Non-admins can only see their own certificates
     if (req.user?.role !== "Admin") {
-      list = list.filter(c => c.recipientEmail.toLowerCase() === req.user!.email.toLowerCase());
+      const email = req.user?.email || (req.query.email as string);
+      if (email) {
+        list = list.filter(c => c.recipientEmail.toLowerCase() === email.toLowerCase());
+      } else {
+        list = [];
+      }
     }
     res.json(list);
   } catch (error: any) {

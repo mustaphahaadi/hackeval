@@ -1,6 +1,6 @@
 # REST API Specifications Manual
 
-This document details the public and protected REST API endpoints hosted by the Hackathon Platform. All requests must utilize the application JSON content-type and provide valid credentials where specified.
+This document details the public and protected REST API endpoints hosted by the Autonomous AI Hackathon Platform. All requests must utilize the application JSON content-type and provide valid credentials where specified.
 
 ---
 
@@ -63,7 +63,7 @@ Registers a team submission.
 *   **Method:** `POST`
 *   **Path:** `/api/projects`
 *   **Headers:**
-    *   `Authorization: Bearer <JWT_TOKEN>`
+    *   `Authorization: Bearer <JWT_TOKEN>` (Role: `Participant` or `Admin`)
 *   **Request Body:**
     ```json
     {
@@ -76,7 +76,7 @@ Registers a team submission.
       "liveUrl": "https://medisync-demo.cloud"
     }
     ```
-*   **Response (211 Created):**
+*   **Response (201 Created):**
     ```json
     {
       "id": "proj_a28b49cd",
@@ -114,14 +114,14 @@ Retrieves all submissions. Output is sanitized based on user access roles.
 
 ---
 
-## 🤖 Evaluation & Judging Module
+## 🤖 AI Evaluation & Automated Grading Module
 
-### 1. Trigger Gemini AI Static Review
-Triggers AI review code static models and schema evaluations.
+### 1. Trigger Gemini AI Review on Single Project
+Triggers the live code static audit and Gemini evaluation for a project.
 *   **Method:** `POST`
 *   **Path:** `/api/evaluate/proj_a28b49cd`
 *   **Headers:**
-    *   `Authorization: Bearer <JWT_TOKEN>` (Must be role: `Judge` or `Admin`)
+    *   `Authorization: Bearer <JWT_TOKEN>` (Must be role: `Admin`)
 *   **Response (200 OK):**
     ```json
     {
@@ -143,41 +143,34 @@ Triggers AI review code static models and schema evaluations.
     }
     ```
 
-### 2. Submit Panel Judge Review
-Saves a human jury scoring card.
+### 2. Run Bulk AI Evaluation On All Submissions
+Performs autonomous, simultaneous code reviews and assigns grades over all projects.
 *   **Method:** `POST`
-*   **Path:** `/api/reviews`
+*   **Path:** `/api/evaluate-all`
 *   **Headers:**
-    *   `Authorization: Bearer <JWT_TOKEN>` (Must be role: `Judge` or `Admin`)
-*   **Request Body:**
+    *   `Authorization: Bearer <JWT_TOKEN>` (Must be role: `Admin`)
+*   **Response (200 OK):**
     ```json
     {
-      "projectId": "proj_a28b49cd",
-      "scores": {
-        "idea": 92,
-        "innovation": 88,
-        "codeQuality": 80,
-        "readme": 90,
-        "ui": 95,
-        "aiUsage": 85,
-        "technical": 87
-      },
-      "feedback": "Outstanding user interface presentation with clean, responsive dashboards. Solid work!"
-    }
-    ```
-*   **Response (201 Created):**
-    ```json
-    {
-      "message": "Project reviewed successfully."
+      "success": true,
+      "evaluatedCount": 8,
+      "results": [
+        {
+          "projectId": "proj_a28b49cd",
+          "projectName": "MediSync: Patient Queue Coordinator",
+          "overallScore": 87.1,
+          "status": "success"
+        }
+      ]
     }
     ```
 
-### 3. Query AI Judge Assistant Chat
-Interacts with the dynamic natural language context oracle.
+### 3. Query AI Evaluation Assistant Chat
+Interacts with the dynamic natural language context oracle over evaluated results.
 *   **Method:** `POST`
 *   **Path:** `/api/ai-judge-assistant`
 *   **Headers:**
-    *   `Authorization: Bearer <JWT_TOKEN>` (Must be role: `Judge` or `Admin`)
+    *   `Authorization: Bearer <JWT_TOKEN>` (Must be role: `Admin`)
 *   **Request Body:**
     ```json
     {
@@ -196,7 +189,7 @@ Interacts with the dynamic natural language context oracle.
 ## 👑 Administrative Operations
 
 ### 1. Upgrade User Role (RBAC management)
-Promotes a user account.
+Promotes or demotes user accounts inside the permission tables.
 *   **Method:** `PUT`
 *   **Path:** `/api/admin/users/usr_7ecf1489/role`
 *   **Headers:**
@@ -204,7 +197,7 @@ Promotes a user account.
 *   **Request Body:**
     ```json
     {
-      "role": "Judge"
+      "role": "Admin"
     }
     ```
 *   **Response (200 OK):**

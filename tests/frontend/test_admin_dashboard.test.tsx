@@ -61,8 +61,8 @@ describe("AdminDashboard Component", () => {
 
     // Wait for data fetching to complete and check main sections
     await waitFor(() => {
-      expect(screen.getByText("Admin Command Center")).toBeInTheDocument();
-      expect(screen.getByText("Configure event schedules, judge assignments, and export ranking data.")).toBeInTheDocument();
+      expect(screen.getByText("Admin Console")).toBeInTheDocument();
+      expect(screen.getByText("Global configurations: user role elevation, custom cert creation, and hackathon events active toggle states.")).toBeInTheDocument();
     });
 
     // Check tabs

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Shield, Users, Award, Calendar, RefreshCw, AlertCircle, Plus, Check, Trash, Power, Download, Edit, Save, X, Search, FolderGit } from "lucide-react";
+import { Shield, Users, Award, Calendar, RefreshCw, AlertCircle, Plus, Check, Trash, Power, Download, Edit, Save, X, Search, FolderGit, ArrowLeft, Play } from "lucide-react";
 import { User, HackathonEvent, ProjectSubmission } from "../types";
 
 interface AdminDashboardProps {
@@ -16,6 +16,32 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  // Hackathon detailed view
+  const [selectedHk, setSelectedHk] = useState<HackathonEvent | null>(null);
+  const [rankLoading, setRankLoading] = useState(false);
+  const [hkLeaderboard, setHkLeaderboard] = useState<any[]>([]);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+
+  const fetchHkLeaderboard = async () => {
+    if (!selectedHk) return;
+    setLeaderboardLoading(true);
+    try {
+      const res = await fetch(`/api/leaderboard?hackathonId=${selectedHk.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setHkLeaderboard(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch hackathon leaderboard", err);
+    } finally {
+      setLeaderboardLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchHkLeaderboard();
+  }, [selectedHk, projects]);
+
   // Team management states
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [editProjectName, setEditProjectName] = useState("");
@@ -25,6 +51,51 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
   const [editLiveUrl, setEditLiveUrl] = useState("");
   const [editTeamSearchTerm, setEditTeamSearchTerm] = useState("");
   const [exportLoading, setExportLoading] = useState(false);
+  const [bulkLoading, setBulkLoading] = useState(false);
+
+  const handleBulkAIEvaluation = async () => {
+    setError("");
+    setSuccess("");
+    setBulkLoading(true);
+    try {
+      const res = await fetch("/api/evaluate-all", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Failed to execute bulk AI evaluation.");
+      const data = await res.json();
+      setSuccess(`Success! The AI engine successfully analyzed code repositories and calculated grade cards for all ${data.evaluatedCount} projects.`);
+      fetchData(); // Refresh list to update scores instantly
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const handleAnalyzeAndRank = async (hkId: string) => {
+    setError("");
+    setSuccess("");
+    setRankLoading(true);
+    try {
+      const res = await fetch("/api/evaluate-all", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}` 
+        },
+        body: JSON.stringify({ hackathonId: hkId })
+      });
+      if (!res.ok) throw new Error("Failed to execute hackathon AI evaluation and ranking.");
+      const data = await res.json();
+      setSuccess(`Success! The AI engine analyzed all ${data.evaluatedCount} submissions for this hackathon, scored them, and established the official rankings.`);
+      await fetchData(); // Refresh data to pull updated scores and statuses
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setRankLoading(false);
+    }
+  };
 
   // Certificate form states
   const [selectedProjectId, setSelectedProjectId] = useState("");
@@ -256,8 +327,7 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
         "Project Name",
         "Team Name",
         "AI Evaluation Score",
-        "Judge Average Score",
-        "Combined Weighted Score"
+        "Evaluation Status"
       ];
 
       const rows = leaderboardData.map((item: any) => [
@@ -265,8 +335,7 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
         `"${item.projectName.replace(/"/g, '""')}"`,
         `"${item.teamName.replace(/"/g, '""')}"`,
         item.aiOverallScore !== null ? item.aiOverallScore : "Pending",
-        item.judgeAverageScore !== null ? item.judgeAverageScore : "Pending",
-        item.combinedScore > 0 ? item.combinedScore : "Unranked"
+        item.aiOverallScore !== null ? "Evaluated" : "Pending"
       ]);
 
       const csvContent = "data:text/csv;charset=utf-8," 
@@ -400,7 +469,7 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{u.email}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
-                            u.role === "Admin" ? "bg-rose-50 text-rose-700 border border-rose-200" : u.role === "Judge" ? "bg-amber-50 text-amber-700 border border-amber-200" : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                            u.role === "Admin" ? "bg-rose-50 text-rose-700 border border-rose-200" : "bg-emerald-50 text-emerald-700 border border-emerald-200"
                           }`}>
                             {u.role}
                           </span>
@@ -412,14 +481,6 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                               className="px-2 py-1 bg-white hover:bg-slate-50 text-slate-600 rounded border border-slate-200 font-semibold cursor-pointer"
                             >
                               Demote to Participant
-                            </button>
-                          )}
-                          {u.role !== "Judge" && (
-                            <button
-                              onClick={() => handleUpdateRole(u.id, "Judge")}
-                              className="px-2 py-1 bg-amber-50 hover:bg-amber-100/80 text-amber-800 rounded border border-amber-200 font-semibold cursor-pointer"
-                            >
-                              Promote to Judge
                             </button>
                           )}
                           {u.role !== "Admin" && (
@@ -441,6 +502,47 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
 
           {subTab === "teams" && (
             <div className="space-y-6">
+              {/* Bulk AI Evaluation Banner Panel */}
+              <div className="bg-gradient-to-r from-indigo-500 via-indigo-600 to-indigo-700 text-white p-6 sm:p-8 rounded-2xl shadow-md border border-indigo-400 space-y-4">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                  <div className="space-y-2">
+                    <h4 className="font-sans font-extrabold text-white text-xl tracking-tight flex items-center gap-2">
+                      <Power className="w-5 h-5 text-indigo-200 animate-pulse" />
+                      Autonomous AI Hackathon Evaluator
+                    </h4>
+                    <p className="text-indigo-100 text-sm max-w-xl leading-relaxed">
+                      Grading hackathons is now fully automated. Click the button to command the AI system to fetch GitHub repository telemetry, parse source files, evaluate project descriptions, and instantly compute grades and ranks for all registered submissions.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleBulkAIEvaluation}
+                    disabled={bulkLoading || projects.length === 0}
+                    className="px-6 py-3 bg-white hover:bg-indigo-50 text-indigo-700 font-bold text-sm rounded-xl shadow-lg transition-all cursor-pointer inline-flex items-center gap-2 shrink-0 disabled:opacity-50"
+                  >
+                    {bulkLoading ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin text-indigo-600" />
+                        Running Autonomous Engine...
+                      </>
+                    ) : (
+                      <>
+                        <Shield className="w-4 h-4 text-indigo-600" />
+                        Grade All Submissions
+                      </>
+                    )}
+                  </button>
+                </div>
+                {bulkLoading && (
+                  <div className="bg-indigo-800/40 p-4 rounded-xl border border-indigo-500/30">
+                    <p className="text-xs text-indigo-200 font-medium flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                      Analyzing codebases, parsing documents, and invoking Gemini 3.5 AI Evaluation templates... This may take up to a minute. Please keep this tab active.
+                    </p>
+                  </div>
+                )}
+              </div>
+
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-4">
                 <div>
                   <h3 className="font-sans font-bold text-slate-900 text-lg">Manage Registered Teams</h3>
@@ -718,105 +820,239 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
           )}
 
           {subTab === "events" && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              {/* Event Creator Form */}
-              <form onSubmit={handleCreateHackathon} className="space-y-4">
-                <h3 className="font-sans font-bold text-slate-900 text-lg border-b border-slate-100 pb-2">Create Hackathon Event</h3>
-                
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Event Name</label>
-                  <input
-                    type="text"
-                    required
-                    value={hkName}
-                    onChange={(e) => setHkName(e.target.value)}
-                    placeholder="e.g. PennApps Fall 2026"
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm shadow-sm focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Description</label>
-                  <textarea
-                    required
-                    rows={3}
-                    value={hkDesc}
-                    onChange={(e) => setHkDesc(e.target.value)}
-                    placeholder="Provide overview details..."
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm shadow-sm focus:outline-none"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Start Date</label>
-                    <input
-                      type="date"
-                      required
-                      value={hkStart}
-                      onChange={(e) => setHkStart(e.target.value)}
-                      className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm shadow-sm focus:outline-none bg-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">End Date</label>
-                    <input
-                      type="date"
-                      required
-                      value={hkEnd}
-                      onChange={(e) => setHkEnd(e.target.value)}
-                      className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm shadow-sm focus:outline-none bg-white"
-                    />
+            selectedHk ? (
+              <div className="space-y-6 animate-fade-in">
+                {/* Back button */}
+                <div className="flex items-center justify-between">
+                  <button
+                    onClick={() => setSelectedHk(null)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold rounded-lg shadow-sm cursor-pointer text-slate-700"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    Back to Hackathon Events
+                  </button>
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-flex px-2 py-0.5 rounded text-xs font-bold uppercase ${
+                      selectedHk.active ? "bg-indigo-100 text-indigo-800" : "bg-slate-100 text-slate-850"
+                    }`}>
+                      {selectedHk.active ? "Active" : "Inactive"}
+                    </span>
                   </div>
                 </div>
 
-                <button
-                  type="submit"
-                  className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-sm font-semibold rounded-lg text-white cursor-pointer"
-                >
-                  Create Event
-                </button>
-              </form>
+                {/* Event Details Card */}
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                  <div className="space-y-1">
+                    <h3 className="text-xl font-sans font-bold text-slate-900">{selectedHk.name}</h3>
+                    <p className="text-sm text-slate-600 max-w-xl">{selectedHk.description}</p>
+                    <p className="text-xs text-slate-400 font-mono">Event Timeline: {selectedHk.startDate} to {selectedHk.endDate}</p>
+                  </div>
 
-              {/* Event Listings */}
-              <div className="space-y-4">
-                <h3 className="font-sans font-bold text-slate-900 text-lg border-b border-slate-100 pb-2">Active Events Manager</h3>
-                
-                <div className="space-y-3.5">
-                  {hackathons.map((hk) => (
-                    <div 
-                      key={hk.id}
-                      className={`border p-4 rounded-xl flex items-center justify-between ${
-                        hk.active ? "border-indigo-400 bg-indigo-50/10" : "border-slate-200"
-                      }`}
-                    >
-                      <div className="space-y-1 pr-4">
-                        <div className="flex items-center gap-1.5">
-                          <h4 className="font-bold text-slate-900 text-sm">{hk.name}</h4>
-                          {hk.active && (
-                            <span className="bg-indigo-100 text-indigo-800 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider">Active</span>
-                          )}
+                  {/* Mass AI Evaluation & Ranking for this event */}
+                  <button
+                    onClick={() => handleAnalyzeAndRank(selectedHk.id)}
+                    disabled={rankLoading}
+                    className="w-full md:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-xl font-bold text-sm shadow-md transition-all cursor-pointer shrink-0"
+                  >
+                    {rankLoading ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        Analyzing & Ranking All Submissions...
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-4 h-4 fill-current" />
+                        Analyze and Rank All Submissions
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Submissions Section */}
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+                    <h4 className="font-sans font-bold text-slate-900 text-md">
+                      Submissions for this Event ({projects.filter(p => p.hackathonId === selectedHk.id).length})
+                    </h4>
+                  </div>
+
+                  {(() => {
+                    const filteredProjects = projects.filter(p => p.hackathonId === selectedHk.id);
+                    if (filteredProjects.length === 0) {
+                      return (
+                        <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-2xl">
+                          <p className="text-sm text-slate-500 font-medium">No project submissions have been established for this hackathon event yet.</p>
                         </div>
-                        <p className="text-[11px] text-slate-500 line-clamp-1">{hk.description}</p>
-                        <p className="text-[10px] text-slate-400 font-mono">Dates: {hk.startDate} to {hk.endDate}</p>
-                      </div>
+                      );
+                    }
 
-                      <button
-                        onClick={() => handleToggleHackathonActive(hk.id, hk.active)}
-                        className={`p-2 rounded-lg border text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors ${
-                          hk.active 
-                            ? "bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100" 
-                            : "bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
-                        }`}
-                      >
-                        <Power className="w-3.5 h-3.5" />
-                        {hk.active ? "Deactivate" : "Activate"}
-                      </button>
-                    </div>
-                  ))}
+                    if (leaderboardLoading && hkLeaderboard.length === 0) {
+                      return (
+                        <div className="flex justify-center py-12">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="grid grid-cols-1 gap-4">
+                        {hkLeaderboard.map((item, idx) => {
+                          const fullProj = projects.find(p => p.id === item.projectId);
+                          const isEvaluated = item.aiOverallScore !== null;
+                          return (
+                            <div key={item.projectId} className="bg-white border border-slate-200 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:shadow-sm transition-all">
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <h5 className="font-bold text-slate-900 text-sm">{item.projectName}</h5>
+                                  <span className={`inline-flex px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase ${
+                                    isEvaluated ? "bg-emerald-50 text-emerald-700 border border-emerald-100" : "bg-amber-50 text-amber-700 border border-amber-100"
+                                  }`}>
+                                    {isEvaluated ? "Scored & Ranked" : "Pending Evaluation"}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-slate-600 font-medium">Team Name: <span className="font-bold text-slate-800">{item.teamName}</span></p>
+                                {fullProj?.description && (
+                                  <p className="text-xs text-slate-500 line-clamp-1">{fullProj.description}</p>
+                                )}
+                                {fullProj?.githubUrl && (
+                                  <div className="text-[10px] text-slate-400 font-mono">
+                                    GitHub: <a href={fullProj.githubUrl} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">{fullProj.githubUrl}</a>
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-6 shrink-0">
+                                {isEvaluated ? (
+                                  <div className="text-right">
+                                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Composite Placement</div>
+                                    <div className="text-lg font-sans font-extrabold text-indigo-600">Rank #{item.rank}</div>
+                                    <div className="text-[10px] text-slate-500 font-medium">Score: {item.aiOverallScore}/100</div>
+                                  </div>
+                                ) : (
+                                  <div className="text-right">
+                                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Composite Placement</div>
+                                    <div className="text-lg font-sans font-extrabold text-slate-400">-</div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* Event Creator Form */}
+                <form onSubmit={handleCreateHackathon} className="space-y-4">
+                  <h3 className="font-sans font-bold text-slate-900 text-lg border-b border-slate-100 pb-2">Create Hackathon Event</h3>
+                  
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Event Name</label>
+                    <input
+                      type="text"
+                      required
+                      value={hkName}
+                      onChange={(e) => setHkName(e.target.value)}
+                      placeholder="e.g. PennApps Fall 2026"
+                      className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm shadow-sm focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Description</label>
+                    <textarea
+                      required
+                      rows={3}
+                      value={hkDesc}
+                      onChange={(e) => setHkDesc(e.target.value)}
+                      placeholder="Provide overview details..."
+                      className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm shadow-sm focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Start Date</label>
+                      <input
+                        type="date"
+                        required
+                        value={hkStart}
+                        onChange={(e) => setHkStart(e.target.value)}
+                        className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm shadow-sm focus:outline-none bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">End Date</label>
+                      <input
+                        type="date"
+                        required
+                        value={hkEnd}
+                        onChange={(e) => setHkEnd(e.target.value)}
+                        className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm shadow-sm focus:outline-none bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-sm font-semibold rounded-lg text-white cursor-pointer"
+                  >
+                    Create Event
+                  </button>
+                </form>
+
+                {/* Event Listings */}
+                <div className="space-y-4">
+                  <h3 className="font-sans font-bold text-slate-900 text-lg border-b border-slate-100 pb-2">Active Events Manager</h3>
+                  
+                  <div className="space-y-3.5">
+                    {hackathons.map((hk) => (
+                      <div 
+                        key={hk.id}
+                        className={`border p-4 rounded-xl flex items-center justify-between ${
+                          hk.active ? "border-indigo-400 bg-indigo-50/10" : "border-slate-200"
+                        }`}
+                      >
+                        <div className="space-y-1 pr-4">
+                          <div className="flex items-center gap-1.5">
+                            <h4 className="font-bold text-slate-900 text-sm">{hk.name}</h4>
+                            {hk.active && (
+                              <span className="bg-indigo-100 text-indigo-800 text-[9px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider">Active</span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-slate-500 line-clamp-1">{hk.description}</p>
+                          <p className="text-[10px] text-slate-400 font-mono">Dates: {hk.startDate} to {hk.endDate}</p>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setSelectedHk(hk)}
+                            className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
+                          >
+                            <FolderGit className="w-3.5 h-3.5" />
+                            Open
+                          </button>
+                          <button
+                            onClick={() => handleToggleHackathonActive(hk.id, hk.active)}
+                            className={`p-2 rounded-lg border text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors ${
+                              hk.active 
+                                ? "bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100" 
+                                : "bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
+                            }`}
+                          >
+                            <Power className="w-3.5 h-3.5" />
+                            {hk.active ? "Deactivate" : "Activate"}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )
           )}
         </div>
       )}

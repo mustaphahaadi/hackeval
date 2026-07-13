@@ -1,91 +1,100 @@
-# Event Administrator Operations Guide
+# Hackathon Owner & Event Administrator Operations Guide
 
-Welcome to the **Admin Command Center**! This guide is designed to help university organizers, department heads, and developer club coordinators manage users, update team details, set up events, and export leaderboard results.
+Welcome to the **Admin Command Center**! This guide is designed to help university organizers, department heads, and community coordinators manage users, update team details, schedule events, execute bulk AI evaluations with 1-click, and export final leaderboard reports.
 
 ---
 
 ## 🏛️ Accessing the Admin Command Center
 
-When logged in with **Admin** credentials, you will see the **Admin Control Panel** in your navigation header. The dashboard provides a high-level view of system metrics:
+When logged in with **Admin (Hackathon Owner)** credentials, you will see the **Admin Console** tab in your navigation header. The dashboard provides a high-level view of system metrics:
 
-*   **Total Registered Users:** Total participant, judge, and admin accounts.
-*   **Total Project Submissions:** Total student projects currently in the database.
-*   **Awaiting Evaluations:** Submissions needing AI or jury grading.
+*   **Total Registered Users:** Total participant and admin accounts.
+*   **Total Project Submissions:** Total projects currently in the database.
+*   **Awaiting Evaluations:** Submissions needing AI grading.
 *   **Evaluated Projects:** Fully graded projects included in the leaderboard.
 
 ---
 
 ## 🔑 1. User Permissions & Role Management (RBAC)
 
-Administrators have full authority over user permissions. This allows you to promote accounts and assign jury members:
+Administrators have full authority over user permissions. This allows you to manage accounts and promote co-organizers:
 
 ```text
 +-----------------------------------------------------------+
 |                      User Directory                       |
 +-----------------------------------------------------------+
-| bob@university.edu       Role: Participant   [Change Role] |
-| alice@university.edu     Role: Judge         [Change Role] |
-| dean@university.edu      Role: Admin         [Change Role] |
+| bob@university.edu       Role: Participant   [Make Admin]  |
+| dean@university.edu      Role: Admin         [Demote User] |
 +-----------------------------------------------------------+
 ```
 
 1.  Navigate to the **User Permissions** tab.
 2.  Locate the user's email address in the directory.
-3.  Click the **Role Selection** dropdown next to their name.
-4.  Select **Judge** to promote a guest speaker or faculty member, or **Admin** to grant co-organizer permissions.
-5.  The system updates their access rights instantly without requiring a re-login.
+3.  Click **Make Admin** to promote a co-organizer, or **Demote to Participant** to restrict access.
+4.  The system updates their access rights instantly.
 
 ---
 
-## 📝 2. Managing Team Submissions & Detail Edits
+## 🤖 2. Running Autonomous AI Hackathon Evaluation (One-Click Bulk Grading)
 
-Students frequently make typos or change their projects mid-event. Administrators can edit submission details to keep records accurate:
-
-1.  Navigate to the **Manage Teams** tab.
-2.  Select the project submission you need to adjust.
-3.  Click **Edit Details**.
-4.  A form displays with current metadata (Project Title, Team Name, Member List, problem description, GitHub and Live URLs).
-5.  Make the necessary corrections and click **Save Changes**. The database updates immediately, and the changes are reflected across both the Judge and Participant Dashboards.
-
----
-
-## 📅 3. Event Scheduling & Lifecycle Management
-
-Admin accounts can define and schedule specific hackathon events:
-
-1.  Navigate to the **Manage Events** tab.
-2.  Click **Create Event** or modify existing listings.
-3.  Set the **Event Name**, **Description**, **Start Date**, and **End Date**.
-4.  Set the status to **Active** to open submissions for participants, or **Ended** to freeze changes and finalize evaluations.
-
----
-
-## 📊 4. Exporting Results & Leaderboard Data to CSV
-
-Once all evaluations are complete, you can export the finalized rankings for award ceremonies or grading records:
+Grading hackathons is now fully automated. Rather than coordinating a panel of manual judges and managing spreadsheets, you can grade all project submissions with a single click:
 
 ```text
 +-----------------------------------------------------------+
-|                     Export Console                        |
+|           ⚡ Autonomous AI Hackathon Evaluator            |
 +-----------------------------------------------------------+
-|  Calculate Combined Scores:                               |
-|  * AI static scorecard score: 40% weighting               |
-|  * Jury average panel score: 60% weighting                |
+| [ GRADE ALL SUBMISSIONS ]                                 |
 |                                                           |
-|  [ DOWNLOAD CSV RESULTS REPORT ]                          |
+| * Pulls public repository branches, files & readme        |
+| * Audits codebase practices & structure                   |
+| * Generates scores for idea, innovation, UX, and code     |
 +-----------------------------------------------------------+
 ```
 
+1.  Navigate to the **Manage Teams** tab in the Admin Console.
+2.  Review the **Autonomous AI Hackathon Evaluator** gradient banner.
+3.  Click the white **Grade All Submissions** button.
+4.  The background pipeline will:
+    *   Crawl each project's GitHub URL to parse file structures, documentation, and branches.
+    *   Execute static code checks to evaluate development practices.
+    *   Run live accessibility, security, and performance audits over deployed website URLs.
+    *   Query the Google Gemini model to grade projects against the 7 standardized criteria and compile detailed critique markdown.
+5.  Upon completion, the leaderboard updates instantly. You can also re-run grading for individual projects inside their detailed view page.
+
+---
+
+## 📝 3. Managing Team Submissions & Detail Edits
+
+Participants occasionally make typos or change details mid-event. Administrators can edit submission details to keep records accurate:
+
+1.  Navigate to the **Manage Teams** tab.
+2.  Locate the project submission you need to adjust and click **Edit Details**.
+3.  Make any corrections to the Project Title, Team Name, Member List, description, and URLs.
+4.  Click **Save Changes**. The database updates immediately.
+
+---
+
+## 📅 4. Event Scheduling & Lifecycle Management
+
+Admin accounts can define and schedule specific hackathon events:
+
+1.  Navigate to the **Hackathon Events** tab.
+2.  Click **Create Event** or modify existing listings.
+3.  Set the **Event Name**, **Description**, **Start Date**, and **End Date**.
+4.  Toggle **Activate** to open submissions for participants, or **Deactivate** to freeze changes and finalize evaluations.
+
+---
+
+## 📊 5. Exporting Results & Leaderboard Data to CSV
+
+Once evaluations are complete, you can export the finalized rankings for award ceremonies:
+
 1.  Navigate to the **Export Results** tab.
-2.  Review the compiled leaderboard ranks displayed in the table. The platform calculates combined scores using the official formula:
-    $$\text{Combined Score} = (\text{AI Overall Score} \times 0.40) + (\text{Jury Average Score} \times 0.60)$$
-3.  Click the blue **Download CSV Results Report** button.
-4.  The browser compiles and downloads a structured file named `hackathon_leaderboard_results.csv` containing:
+2.  Click **Download CSV Results Report**.
+3.  The browser compiles and downloads a structured file named `hackathon_leaderboard_results.csv` containing:
     *   Final Placement Rank
     *   Project Title & Team Name
-    *   Spokesperson Email & Member Names
-    *   Calculated AI Score
-    *   Judge Average Score
-    *   Combined Weighted Score
+    *   Computed AI Overall Score
+    *   Evaluation Status
     *   GitHub Repository Link
-5.  A success message appears, confirming your data export is complete and ready for presentation!
+4.  Use this report to present awards and publish the final leaderboard standings!

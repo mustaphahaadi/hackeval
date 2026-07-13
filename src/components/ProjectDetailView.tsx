@@ -8,12 +8,12 @@ import { ProjectSubmission, GitHubAnalysis, AIEvaluation, JudgeReview, Comment, 
 
 interface ProjectDetailViewProps {
   projectId: string;
-  token: string;
+  token?: string;
   currentUser: {
     id: string;
     name: string;
     role: UserRole;
-  };
+  } | null;
   onBack: () => void;
 }
 
@@ -22,20 +22,6 @@ export function ProjectDetailView({ projectId, token, currentUser, onBack }: Pro
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   
-  // Scoring States
-  const [scoringOpen, setScoringOpen] = useState(false);
-  const [scores, setScores] = useState({
-    idea: 80,
-    innovation: 80,
-    codeQuality: 80,
-    readme: 80,
-    ui: 80,
-    aiUsage: 80,
-    technical: 80
-  });
-  const [judgeFeedback, setJudgeFeedback] = useState("");
-  const [submitScoringLoading, setSubmitScoringLoading] = useState(false);
-
   // Comment State
   const [newComment, setNewComment] = useState("");
   const [submitCommentLoading, setSubmitCommentLoading] = useState(false);
@@ -104,13 +90,6 @@ export function ProjectDetailView({ projectId, token, currentUser, onBack }: Pro
       if (data.liveUrl) {
         fetchSavedLiveAnalysis(data.liveUrl);
       }
-      
-      // Seed scores if they already have reviews
-      const myReview = data.judgeReviews?.find((r: any) => r.judgeId === currentUser.id);
-      if (myReview) {
-        setScores(myReview.scores);
-        setJudgeFeedback(myReview.feedback);
-      }
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -121,43 +100,6 @@ export function ProjectDetailView({ projectId, token, currentUser, onBack }: Pro
   useEffect(() => {
     fetchProjectDetails();
   }, [projectId, token]);
-
-  const handleScoreChange = (criteria: keyof typeof scores, val: number) => {
-    setScores(prev => ({ ...prev, [criteria]: val }));
-  };
-
-  const handleSubmitReview = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSubmitScoringLoading(true);
-    setError("");
-
-    try {
-      const res = await fetch("/api/reviews", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          projectId,
-          scores,
-          feedback: judgeFeedback
-        })
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Failed to submit score.");
-      }
-
-      setScoringOpen(false);
-      fetchProjectDetails();
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setSubmitScoringLoading(false);
-    }
-  };
 
   const handleSubmitComment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -245,7 +187,7 @@ export function ProjectDetailView({ projectId, token, currentUser, onBack }: Pro
           Back to Listings
         </button>
 
-        {currentUser.role === "Admin" && (
+        {currentUser?.role === "Admin" && (
           <button
             onClick={handleRunAIEvaluation}
             disabled={evalLoading}
@@ -833,7 +775,7 @@ export function ProjectDetailView({ projectId, token, currentUser, onBack }: Pro
               ) : (
                 <div className="text-center py-8 text-slate-400 text-sm space-y-4">
                   <p>This project has not been scored by the AI Evaluation engine yet.</p>
-                  {(currentUser.role === "Admin" || currentUser.role === "Judge") && (
+                  {currentUser?.role === "Admin" && (
                     <button
                       onClick={handleRunAIEvaluation}
                       disabled={evalLoading}
@@ -846,118 +788,6 @@ export function ProjectDetailView({ projectId, token, currentUser, onBack }: Pro
                 </div>
               )}
             </div>
-          </div>
-
-          {/* Judges scoring panel */}
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h2 className="font-sans font-bold text-slate-900 text-base flex items-center gap-1.5">
-                <Star className="w-5 h-5 text-amber-500 fill-amber-100" />
-                Jury Evaluation Panel
-              </h2>
-              {project.judgeReviews?.length > 0 && (
-                <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
-                  {project.judgeReviews.length} Reviews
-                </span>
-              )}
-            </div>
-
-            {/* List existing reviews */}
-            <div className="space-y-4 divide-y divide-slate-100 max-h-60 overflow-y-auto pr-1">
-              {project.judgeReviews?.length > 0 ? (
-                project.judgeReviews.map((rev: any) => (
-                  <div key={rev.id} className="pt-3 first:pt-0 space-y-1.5">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="font-bold text-slate-800">{rev.judgeName}</span>
-                      <span className="font-mono font-extrabold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
-                        Score: {rev.overallScore}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-500 italic mt-1 leading-relaxed">"{rev.feedback}"</p>
-                  </div>
-                ))
-              ) : (
-                <p className="text-xs text-slate-400 text-center py-4">No reviews submitted by jury members yet.</p>
-              )}
-            </div>
-
-            {/* Submit scores if Judge/Admin */}
-            {(currentUser.role === "Judge" || currentUser.role === "Admin") && (
-              <div className="border-t border-slate-100 pt-4">
-                {!scoringOpen ? (
-                  <button
-                    onClick={() => setScoringOpen(true)}
-                    className="w-full py-2 bg-indigo-50 hover:bg-indigo-100/80 text-indigo-700 text-xs font-bold rounded-lg border border-indigo-200 transition-colors cursor-pointer"
-                  >
-                    Open Judging Scoring Form
-                  </button>
-                ) : (
-                  <form onSubmit={handleSubmitReview} className="space-y-4">
-                    <h3 className="text-xs font-bold text-slate-700 border-b border-slate-100 pb-2">Rate dimensions (0-100)</h3>
-                    
-                    {[
-                      { label: "Idea", key: "idea" },
-                      { label: "Innovation", key: "innovation" },
-                      { label: "Code Quality", key: "codeQuality" },
-                      { label: "README", key: "readme" },
-                      { label: "UI / UX UX", key: "ui" },
-                      { label: "AI Usage", key: "aiUsage" },
-                      { label: "Technical Complexity", key: "technical" },
-                    ].map((dim) => (
-                      <div key={dim.key} className="space-y-1">
-                        <div className="flex justify-between text-[11px] font-semibold text-slate-600">
-                          <span>{dim.label}</span>
-                          <span className="font-mono">{scores[dim.key as keyof typeof scores]}</span>
-                        </div>
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          value={scores[dim.key as keyof typeof scores]}
-                          onChange={(e) => handleScoreChange(dim.key as keyof typeof scores, Number(e.target.value))}
-                          className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                        />
-                      </div>
-                    ))}
-
-                    <div className="space-y-1">
-                      <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider">Evaluation Comments</label>
-                      <textarea
-                        required
-                        rows={3}
-                        value={judgeFeedback}
-                        onChange={(e) => setJudgeFeedback(e.target.value)}
-                        placeholder="Provide detailed professional feedback explaining scores..."
-                        className="w-full p-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
-                    </div>
-
-                    <div className="flex gap-2 justify-end pt-2">
-                      <button
-                        type="button"
-                        onClick={() => setScoringOpen(false)}
-                        className="px-3 py-1.5 text-xs font-semibold text-slate-500 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg cursor-pointer"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="submit"
-                        disabled={submitScoringLoading}
-                        className="px-3.5 py-1.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm transition-all cursor-pointer flex items-center gap-1 disabled:opacity-50"
-                      >
-                        {submitScoringLoading ? (
-                          <span className="inline-block animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white" />
-                        ) : (
-                          <>
-                            <Check className="w-3.5 h-3.5" /> Submit Ratings
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </form>
-                )}
-              </div>
-            )}
           </div>
 
           {/* Interactive Comments Stream */}
@@ -975,7 +805,7 @@ export function ProjectDetailView({ projectId, token, currentUser, onBack }: Pro
                     <div className="flex items-center justify-between text-[11px]">
                       <span className="font-bold text-slate-800">{comm.userName}</span>
                       <span className={`px-1.5 py-0.5 rounded font-bold text-[9px] uppercase tracking-wider ${
-                        comm.userRole === "Admin" ? "bg-rose-100 text-rose-800" : comm.userRole === "Judge" ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800"
+                        comm.userRole === "Admin" ? "bg-rose-100 text-rose-800" : "bg-emerald-100 text-emerald-800"
                       }`}>
                         {comm.userRole}
                       </span>

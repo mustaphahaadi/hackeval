@@ -15,15 +15,6 @@ def mock_participant_payload():
     }
 
 @pytest.fixture
-def mock_judge_payload():
-    """Returns registration credentials for a Jury member."""
-    return {
-        "email": "jury_chair@hackathon.com",
-        "password": "SecurePassword123!",
-        "role": "Judge"
-    }
-
-@pytest.fixture
 def mock_admin_payload():
     """Returns standard registration credentials for an Event Administrator."""
     return {
@@ -42,20 +33,4 @@ def mock_project_submission():
         "problemStatement": "Logistics companies fail to measure micro-carbon footprints of dynamic routes.",
         "githubUrl": "https://github.com/test/ecosphere",
         "liveUrl": "https://ecosphere-live.demo"
-    }
-
-@pytest.fixture
-def mock_judge_review():
-    """Returns standard criteria evaluation scores submitted by a judge."""
-    return {
-        "scores": {
-            "idea": 90,
-            "innovation": 95,
-            "codeQuality": 88,
-            "readme": 92,
-            "ui": 94,
-            "aiUsage": 90,
-            "technical": 91
-        },
-        "feedback": "Outstanding architectural layout with real-time reactive route simulations."
     }

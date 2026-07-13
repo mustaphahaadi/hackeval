@@ -4,7 +4,7 @@ import { FileText, Download, Award, TrendingUp, Sparkles, Languages, Check, Refr
 import { ProjectSubmission } from "../types";
 
 interface AnalyticsReportProps {
-  token: string;
+  token?: string;
 }
 
 export function AnalyticsReport({ token }: AnalyticsReportProps) {
@@ -15,9 +15,11 @@ export function AnalyticsReport({ token }: AnalyticsReportProps) {
   const fetchReportData = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/projects", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+      const res = await fetch("/api/projects", { headers });
       const projList: ProjectSubmission[] = await res.json();
       
       // Calculate dynamic data based on project evaluations
@@ -30,9 +32,7 @@ export function AnalyticsReport({ token }: AnalyticsReportProps) {
 
       for (const p of projList) {
         // Fetch detailed to grab evaluation details if available
-        const detailsRes = await fetch(`/api/projects/${p.id}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const detailsRes = await fetch(`/api/projects/${p.id}`, { headers });
         if (!detailsRes.ok) continue;
         const detail = await detailsRes.json();
 

@@ -3,11 +3,11 @@ import { AuthScreen } from "./components/AuthScreen.js";
 import { Navbar } from "./components/Navbar.js";
 import { LeaderboardView } from "./components/LeaderboardView.js";
 import { ParticipantPortal } from "./components/ParticipantPortal.js";
-import { JudgeDashboard } from "./components/JudgeDashboard.js";
 import { AdminDashboard } from "./components/AdminDashboard.js";
 import { AnalyticsReport } from "./components/AnalyticsReport.js";
 import { ProjectDetailView } from "./components/ProjectDetailView.js";
 import { LiveAnalyzerView } from "./components/LiveAnalyzerView.js";
+import { ProjectSubmissionForm } from "./components/ProjectSubmissionForm.js";
 
 import { 
   FolderGit, Eye, Search, Plus, Award, 
@@ -43,13 +43,14 @@ export default function App() {
   };
 
   const fetchProjectsList = async () => {
-    if (!token) return;
     setProjectsLoading(true);
     setProjectsError("");
     try {
-      const res = await fetch("/api/projects", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+      const res = await fetch("/api/projects", { headers });
       if (!res.ok) throw new Error("Failed to load project list.");
       const data = await res.json();
       setProjects(data);
@@ -61,15 +62,8 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (token) {
-      fetchProjectsList();
-    }
+    fetchProjectsList();
   }, [token]);
-
-  // If not logged in, show Auth Screen
-  if (!token || !user) {
-    return <AuthScreen onLoginSuccess={handleLoginSuccess} />;
-  }
 
   // Handle detailed sub-view
   const handleSelectProject = (projectId: string) => {
@@ -102,7 +96,7 @@ export default function App() {
         {selectedProjectId && currentTab === "project-detail" ? (
           <ProjectDetailView 
             projectId={selectedProjectId} 
-            token={token} 
+            token={token || ""} 
             currentUser={user}
             onBack={() => {
               setSelectedProjectId(null);
@@ -113,11 +107,11 @@ export default function App() {
           <>
             {currentTab === "leaderboard" && (
               <div className="space-y-8">
-                <LeaderboardView token={token} onSelectProject={handleSelectProject} />
+                <LeaderboardView token={token || ""} onSelectProject={handleSelectProject} />
                 
                 {/* Embedded Quick Analytics Preview */}
                 <div className="border-t border-slate-200 pt-8">
-                  <AnalyticsReport token={token} />
+                  <AnalyticsReport token={token || ""} />
                 </div>
               </div>
             )}
@@ -211,20 +205,46 @@ export default function App() {
               </div>
             )}
 
-            {currentTab === "portal" && user.role === "Participant" && (
-              <ParticipantPortal token={token} currentUser={user} onSelectProject={handleSelectProject} />
+            {currentTab === "submit-project" && (
+              <div className="max-w-3xl mx-auto py-4 animate-fade-in">
+                <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-sm">
+                  <h2 className="text-xl font-sans font-bold text-slate-900 mb-2 flex items-center gap-2">
+                    <FolderGit className="w-6 h-6 text-indigo-600" />
+                    Submit Hackathon Project
+                  </h2>
+                  <p className="text-xs text-slate-500 mb-6">
+                    Enter your project details, provide a public GitHub repository link, and specify any optional AI Studio links or live endpoints.
+                  </p>
+                  <ProjectSubmissionForm
+                    token={token || ""}
+                    onSuccess={() => {
+                      setCurrentTab("projects");
+                      fetchProjectsList();
+                    }}
+                    onCancel={() => {
+                      setCurrentTab("leaderboard");
+                    }}
+                  />
+                </div>
+              </div>
             )}
 
-            {(currentTab === "judge" || (currentTab === "judge" && user.role === "Admin")) && (
-              <JudgeDashboard token={token} onSelectProject={handleSelectProject} />
+            {currentTab === "login" && (
+              <div className="max-w-md mx-auto py-4 animate-fade-in">
+                <AuthScreen onLoginSuccess={handleLoginSuccess} />
+              </div>
             )}
 
-            {currentTab === "admin" && user.role === "Admin" && (
-              <AdminDashboard token={token} />
+            {currentTab === "portal" && user && user.role === "Participant" && (
+              <ParticipantPortal token={token || ""} currentUser={user} onSelectProject={handleSelectProject} />
+            )}
+
+            {currentTab === "admin" && user && user.role === "Admin" && (
+              <AdminDashboard token={token || ""} />
             )}
 
             {currentTab === "live-analyzer" && (
-              <LiveAnalyzerView token={token} />
+              <LiveAnalyzerView token={token || ""} />
             )}
           </>
         )}

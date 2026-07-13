@@ -1,12 +1,14 @@
 # System Architecture Documentation
 
-This document describes the technical architecture, database design, role access model, and LLM orchestration pipeline powering the **Hackathon Evaluation and Judging Platform**.
+This document describes the technical architecture, database design, role access model, and LLM orchestration pipeline powering the **Autonomous AI Hackathon Evaluation Platform**.
 
 ---
 
 ## 🏛️ System Overview
 
-The platform uses a modular decoupled architecture where Express.js hosts both the backend JSON REST APIs and serves the compiled single-page React client (Vite middleware in development; direct static file server in production).
+The platform uses a modular decoupled architecture where Express.js hosts both the backend JSON REST APIs and serves the compiled single-page React client (Vite middleware in development; direct static file server in production). 
+
+In the future state, the backend will be migrated to **FastAPI (Python)**, utilizing **PostgreSQL** as the durable database with **SQLAlchemy** as the ORM, maintaining the same clean, role-based boundary.
 
 ```text
                +-------------------------------------------------+
@@ -34,16 +36,16 @@ The platform uses a modular decoupled architecture where Express.js hosts both t
 
 ## 🗄️ Database Schema & Data Models
 
-The database layer (`src/db.ts`) behaves as an ACID-compliant in-memory transactional database, writing state updates to local files to maintain persistence across container restarts. The schemas perfectly map relational databases like PostgreSQL (Drizzle ORM syntax).
+The database layer (`src/db.ts`) behaves as an ACID-compliant in-memory transactional database, writing state updates to local files to maintain persistence across container restarts. The schemas perfectly map relational databases like PostgreSQL (SQLAlchemy syntax).
 
 ### 1. `User` Schema
-Tracks platform participants, judges, and admins.
+Tracks platform participants and admins (hackathon owners).
 ```typescript
 interface User {
   id: string;        // UUID / Primary Key
   email: string;     // Unique
   passwordHash: string;
-  role: "Participant" | "Judge" | "Admin";
+  role: "Participant" | "Admin";
   createdAt: string; // ISO-8601
 }
 ```
@@ -61,7 +63,8 @@ interface ProjectSubmission {
   problemStatement: string;
   githubUrl: string;
   liveUrl?: string;
-  pdfUrl?: string;        // Path to uploaded presentation decks
+  demoVideoUrl?: string;
+  aiStudioUrl?: string;
   status: "pending" | "evaluated";
   createdAt: string;
 }
@@ -86,30 +89,7 @@ interface AIEvaluation {
 }
 ```
 
-### 4. `JudgeReview` Schema
-Captures the panel scoring cards submitted by human judges.
-```typescript
-interface JudgeReview {
-  id: string;
-  projectId: string;      // Foreign Key -> ProjectSubmission.id
-  judgeId: string;        // Foreign Key -> User.id
-  judgeName: string;
-  scores: {
-    idea: number;
-    innovation: number;
-    codeQuality: number;
-    readme: number;
-    ui: number;
-    aiUsage: number;
-    technical: number;
-  };
-  overallScore: number;   // Combined average of categories
-  feedback: string;
-  createdAt: string;
-}
-```
-
-### 5. `HackathonEvent` Schema
+### 4. `HackathonEvent` Schema
 Enables administrators to establish specific campus event scopes and deadlines.
 ```typescript
 interface HackathonEvent {
@@ -118,7 +98,7 @@ interface HackathonEvent {
   description: string;
   startDate: string;
   endDate: string;
-  status: "active" | "ended";
+  active: boolean;
   createdAt: string;
 }
 ```
@@ -131,14 +111,15 @@ The platform enforces strict **Role-Based Access Control (RBAC)** on all JSON en
 
 | Route Endpoint | Required Role | Description |
 | :--- | :--- | :--- |
-| `POST /api/auth/register` | Public | Registers generic accounts (Participant/Judge default) |
+| `POST /api/auth/register` | Public | Registers generic accounts (Participant/Admin default) |
 | `POST /api/auth/login` | Public | Exchanges credentials for a JWT token |
 | `GET /api/projects` | Logged In | Fetches registered submissions |
 | `POST /api/projects` | `Participant`, `Admin` | Submits a new project |
-| `POST /api/evaluate/:project_id` | `Judge`, `Admin` | Dispatches the Gemini API review pipeline |
-| `POST /api/reviews` | `Judge`, `Admin` | Logs a judge scorecard review |
-| `POST /api/ai-judge-assistant` | `Judge`, `Admin` | Queries the dynamic evaluation oracle chatbot |
-| `GET /api/admin/*` | `Admin` | High-level operations (promote users, modify submissions) |
+| `POST /api/evaluate/:project_id` | `Admin` | Dispatches the Gemini API review pipeline for a project |
+| `POST /api/evaluate-all` | `Admin` | Dispatches bulk AI evaluation over all submitted projects |
+| `POST /api/ai-judge-assistant` | `Admin` | Queries the dynamic evaluation oracle chatbot (Admin Assistant) |
+| `GET /api/admin/users` | `Admin` | Fetches high-level user permissions table |
+| `PUT /api/admin/users/:userId/role`| `Admin` | Elevates or demotes user access roles |
 
 ---
 
@@ -147,31 +128,28 @@ The platform enforces strict **Role-Based Access Control (RBAC)** on all JSON en
 The application's intelligence revolves around two decoupled Google Gemini models.
 
 ### Pipeline A: Static Project Evaluator
-Triggered by a Judge clicking **Run AI Evaluation**.
+Triggered by an Admin clicking **Grade All Submissions** or **Re-run AI Scoring**.
 1. Server queries the project submission details (GitHub URL, description, problem statement).
-2. It fetches the README content or performs a mocked repository analysis of code structures.
-3. It packages this into a high-density, structured prompt containing XML tags to prevent context bleeding.
-4. The system instruction forces Gemini to output a **strict JSON Schema** containing precise scores `[0 - 100]` for the 7 criteria and rich qualitative markdown commentary.
+2. It fetches the README content and performs live static analysis of repository assets (license, branches, files).
+3. It packages this telemetry into a high-density, structured prompt containing XML tags to prevent context bleeding.
+4. The system instruction forces Gemini to output a **strict JSON Schema** containing precise scores `[0 - 100]` for the 7 criteria and rich qualitative markdown critique commentary.
 5. The backend validates the integrity of the returned JSON, computes the arithmetic mean, and updates the database record.
 
-### Pipeline B: AI Judge Assistant (Anti-Hallucination Guard)
-Accessible from the Judge Dashboard chat container.
-1. The server intercepts the judge's natural language query.
-2. Rather than dispatching a loose prompt, it aggregates **all** project submissions, computed AI scores, jury card reviews, and current leaderboard ranks into a centralized context text block.
-3. The prompt template includes a rigid **System Instruction boundary**:
-   > *"You must answer the user's questions based strictly and ONLY on the evaluation data provided in the context below. Do not make up or assume any projects, teams, or scores. If the data is absent, politely state that you do not have that information."*
-4. The Gemini model acts as a pure, zero-hallucination analysis oracle over the aggregated context dataset.
+### Pipeline B: AI Evaluation Assistant (Zero-Hallucination Guard)
+Accessible from the Admin Leaderboard chat.
+1. The server intercepts the admin's natural language query.
+2. Rather than dispatching a loose prompt, it aggregates **all** project submissions, computed AI scores, and current leaderboard ranks into a centralized context text block.
+3. The prompt template includes a rigid **System Instruction boundary** forcing the model to answer questions strictly based on the actual, evaluated project telemetry dataset to prevent hallucinations.
 
 ---
 
 ## 📐 Scoring & Placement Algorithm
 
-The official grand-prize rankings are computed continuously via a weighted composite formula:
+The official grand-prize rankings are computed dynamically directly from the **AI Overall Score**:
 
-$$\text{Combined Score} = (\text{AI Overall Score} \times 0.40) + (\text{Jury Average Score} \times 0.60)$$
+$$\text{Leaderboard Ranking} = f(\text{AI Overall Score})$$
 
 Where:
 *   $\text{AI Overall Score}$ is the arithmetic mean of the 7 metrics generated by the Gemini model.
-*   $\text{Jury Average Score}$ is the mean of all human judge evaluation cards submitted for that project.
-*   If a project has no human reviews yet, it defaults gracefully to a designated placement block to ensure unranked teams do not skew initial listings.
-*   Rankings are computed dynamically on database queries, sorting teams in descending order of their combined scores. Tiebreakers are resolved based on technical and innovation sub-scores.
+*   Tiebreakers are resolved based on technical sophistication, code quality, and innovation sub-scores.
+*   Projects without scores are styled as "Pending AI" and placed at the bottom of the board to preserve ranking integrity.
