@@ -199,7 +199,7 @@ export function HackathonDetailView({
                     <th scope="col" className="px-6 py-3.5 text-xs font-bold text-slate-500 uppercase tracking-wider w-20 text-center">Rank</th>
                     <th scope="col" className="px-6 py-3.5 text-xs font-bold text-slate-500 uppercase tracking-wider">Project Submission</th>
                     <th scope="col" className="px-6 py-3.5 text-xs font-bold text-slate-500 uppercase tracking-wider text-center w-32">AI Score</th>
-                    <th scope="col" className="px-6 py-3.5 text-xs font-bold text-slate-500 uppercase tracking-wider text-center w-32">Jury Score</th>
+                    <th scope="col" className="px-6 py-3.5 text-xs font-bold text-slate-500 uppercase tracking-wider text-center w-32">Organizer Score</th>
                     <th scope="col" className="px-6 py-3.5 text-xs font-bold text-slate-500 uppercase tracking-wider text-center w-36">Composite Score</th>
                     <th scope="col" className="px-6 py-3.5 text-xs font-bold text-slate-500 uppercase tracking-wider text-center w-28">Status</th>
                   </tr>
@@ -248,7 +248,7 @@ export function HackathonDetailView({
                         {/* AI Score */}
                         <td className="px-6 py-4 whitespace-nowrap text-center">
                           {isEvaluated ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-violet-50 text-violet-700 border border-violet-150 font-mono">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-violet-50 text-violet-700 border border-violet-200 font-mono">
                               <Sparkles className="w-3.5 h-3.5 text-violet-500" />
                               {item.aiOverallScore}
                             </span>
@@ -260,7 +260,7 @@ export function HackathonDetailView({
                         {/* Judge Score */}
                         <td className="px-6 py-4 whitespace-nowrap text-center">
                           {item.judgeAverageScore !== null ? (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-150 font-mono">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 font-mono">
                               <Star className="w-3.5 h-3.5 fill-emerald-100 text-emerald-500" />
                               {item.judgeAverageScore}
                             </span>

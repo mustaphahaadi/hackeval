@@ -35,6 +35,74 @@ export function ProjectDetailView({ projectId, token, currentUser, onBack }: Pro
   const [liveAnalysisLoading, setLiveAnalysisLoading] = useState(false);
   const [liveAnalysisError, setLiveAnalysisError] = useState("");
 
+  // Judge manual review states
+  const [judgeIdea, setJudgeIdea] = useState(80);
+  const [judgeInnovation, setJudgeInnovation] = useState(80);
+  const [judgeCodeQuality, setJudgeCodeQuality] = useState(80);
+  const [judgeReadme, setJudgeReadme] = useState(80);
+  const [judgeUi, setJudgeUi] = useState(80);
+  const [judgeAiUsage, setJudgeAiUsage] = useState(80);
+  const [judgeTechnical, setJudgeTechnical] = useState(80);
+  const [judgeFeedback, setJudgeFeedback] = useState("");
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewSuccess, setReviewSuccess] = useState("");
+  const [reviewError, setReviewError] = useState("");
+
+  useEffect(() => {
+    if (project && project.judgeReviews && currentUser) {
+      const myReview = project.judgeReviews.find((r: any) => r.judgeId === currentUser.id);
+      if (myReview) {
+        setJudgeIdea(myReview.scores?.idea ?? 80);
+        setJudgeInnovation(myReview.scores?.innovation ?? 80);
+        setJudgeCodeQuality(myReview.scores?.codeQuality ?? 80);
+        setJudgeReadme(myReview.scores?.readme ?? 80);
+        setJudgeUi(myReview.scores?.ui ?? 80);
+        setJudgeAiUsage(myReview.scores?.aiUsage ?? 80);
+        setJudgeTechnical(myReview.scores?.technical ?? 80);
+        setJudgeFeedback(myReview.feedback ?? "");
+      }
+    }
+  }, [project, currentUser]);
+
+  const handleSubmitReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setReviewLoading(true);
+    setReviewSuccess("");
+    setReviewError("");
+    try {
+      const res = await fetch("/api/reviews", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          projectId,
+          scores: {
+            idea: Number(judgeIdea),
+            innovation: Number(judgeInnovation),
+            codeQuality: Number(judgeCodeQuality),
+            readme: Number(judgeReadme),
+            ui: Number(judgeUi),
+            aiUsage: Number(judgeAiUsage),
+            technical: Number(judgeTechnical)
+          },
+          feedback: judgeFeedback
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to submit grading.");
+
+      setReviewSuccess("Success! Your grading has been submitted and recorded.");
+      fetchProjectDetails();
+    } catch (err: any) {
+      setReviewError(err.message);
+    } finally {
+      setReviewLoading(false);
+    }
+  };
+
   const fetchSavedLiveAnalysis = async (targetUrl: string) => {
     if (!targetUrl) return;
     try {
@@ -330,7 +398,7 @@ export function ProjectDetailView({ projectId, token, currentUser, onBack }: Pro
                     <div>
                       <h4 className="text-xs font-bold text-amber-950 uppercase tracking-wider">🔒 Private / Inaccessible Repository</h4>
                       <p className="text-xs text-amber-800 mt-1 leading-relaxed">
-                        This repository is private or does not exist. The platform generated a high-fidelity mock audit to simulate grades. Change your repository on GitHub to <strong>Public</strong> to allow production-grade, live-connected judges to review it.
+                        This repository is private or does not exist. The platform generated a high-fidelity mock audit to simulate grades. Change your repository on GitHub to <strong>Public</strong> to allow production-grade, live-connected evaluators to review it.
                       </p>
                     </div>
                   </div>
@@ -789,6 +857,87 @@ export function ProjectDetailView({ projectId, token, currentUser, onBack }: Pro
               )}
             </div>
           </div>
+
+          {/* Organizer Scorecard & Grading Panel */}
+          {currentUser?.role === "Admin" && (
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+              <div className="bg-gradient-to-r from-emerald-600 to-teal-600 px-6 py-4 flex items-center justify-between text-white">
+                <h2 className="font-sans font-extrabold text-base flex items-center gap-2">
+                  <Star className="w-5 h-5 fill-teal-100 text-teal-100" />
+                  Organizer Grading Form
+                </h2>
+                {project.judgeReviews && project.judgeReviews.length > 0 && (
+                  <div className="text-xs bg-white/15 px-2 py-1 rounded font-bold uppercase tracking-wider font-mono">
+                    {project.judgeReviews.length} {project.judgeReviews.length === 1 ? "review" : "reviews"} logged
+                  </div>
+                )}
+              </div>
+
+              <form onSubmit={handleSubmitReview} className="p-6 space-y-6">
+                {reviewSuccess && (
+                  <div className="bg-emerald-50 border-l-4 border-emerald-500 p-3 text-emerald-800 text-xs rounded-r-lg font-medium flex items-center gap-1.5 animate-fade-in">
+                    <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                    {reviewSuccess}
+                  </div>
+                )}
+
+                {reviewError && (
+                  <div className="bg-rose-50 border-l-4 border-rose-500 p-3 text-rose-700 text-xs rounded-r-lg font-medium flex items-center gap-1.5 animate-fade-in">
+                    <ShieldAlert className="w-4 h-4 text-rose-500 shrink-0" />
+                    {reviewError}
+                  </div>
+                )}
+
+                <div className="space-y-4">
+                  {[
+                    { label: "Idea Viability", state: judgeIdea, setState: setJudgeIdea, color: "accent-indigo-600" },
+                    { label: "Innovation Quotient", state: judgeInnovation, setState: setJudgeInnovation, color: "accent-pink-500" },
+                    { label: "Code Quality & Organization", state: judgeCodeQuality, setState: setJudgeCodeQuality, color: "accent-emerald-500" },
+                    { label: "Documentation & README", state: judgeReadme, setState: setJudgeReadme, color: "accent-amber-500" },
+                    { label: "Fidelity & UX flow", state: judgeUi, setState: setJudgeUi, color: "accent-teal-500" },
+                    { label: "AI Integration Logic", state: judgeAiUsage, setState: setJudgeAiUsage, color: "accent-violet-500" },
+                    { label: "Technical Sophistication", state: judgeTechnical, setState: setJudgeTechnical, color: "accent-sky-500" },
+                  ].map((row) => (
+                    <div key={row.label} className="space-y-1 bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-semibold text-slate-700">{row.label}</span>
+                        <span className="font-mono font-extrabold text-slate-900 bg-white border border-slate-200 px-1.5 py-0.5 rounded text-[10px]">{row.state} / 100</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={row.state}
+                        onChange={(e) => row.setState(Number(e.target.value))}
+                        className={`w-full h-1 bg-slate-200 rounded-lg cursor-pointer ${row.color}`}
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 block">Critique Feedback & Summary Comments</label>
+                  <textarea
+                    rows={3}
+                    value={judgeFeedback}
+                    onChange={(e) => setJudgeFeedback(e.target.value)}
+                    placeholder="Enter academic review comments, suggestions for the team, or observations..."
+                    className="w-full px-3 py-2 text-xs border border-slate-200 bg-slate-50/50 rounded-xl placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500 focus:bg-white"
+                    required
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={reviewLoading}
+                  className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-bold rounded-xl text-xs shadow-sm transition-all cursor-pointer"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  {reviewLoading ? "Saving Grade..." : "Submit Organizer GradeCard"}
+                </button>
+              </form>
+            </div>
+          )}
 
           {/* Interactive Comments Stream */}
           <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 space-y-4">

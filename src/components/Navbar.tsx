@@ -65,19 +65,6 @@ export function Navbar({ user, currentTab, onChangeTab, onLogout }: NavbarProps)
               </button>
             )}
 
-            {user && user.role === "Participant" && (
-              <button
-                onClick={() => onChangeTab("portal")}
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
-                  currentTab === "portal"
-                    ? "bg-indigo-50 text-indigo-700"
-                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                }`}
-              >
-                <UserCheck className="w-4 h-4" /> Participant Portal
-              </button>
-            )}
-
             {user && user.role === "Admin" && (
               <button
                 onClick={() => onChangeTab("admin")}
@@ -161,17 +148,6 @@ export function Navbar({ user, currentTab, onChangeTab, onLogout }: NavbarProps)
             }`}
           >
             Submit
-          </button>
-        )}
-
-        {user && user.role === "Participant" && (
-          <button
-            onClick={() => onChangeTab("portal")}
-            className={`flex-1 text-center py-2.5 text-xs font-semibold ${
-              currentTab === "portal" ? "text-indigo-600 bg-indigo-50/50" : "text-slate-600"
-            }`}
-          >
-            Portal
           </button>
         )}
 

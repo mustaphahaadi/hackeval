@@ -1640,11 +1640,16 @@ const startServer = async () => {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Express server successfully running on port ${PORT}`);
-  });
+  // Only start listening if NOT running inside Vercel serverless functions
+  if (!process.env.VERCEL) {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`Express server successfully running on port ${PORT}`);
+    });
+  }
 };
 
 startServer().catch(err => {
   console.error("Critical error starting Express + Vite server:", err);
 });
+
+export default app;

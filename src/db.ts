@@ -546,16 +546,32 @@ class LocalDB {
     return filteredProjects.map(proj => {
       // Find AI evaluation
       const aiEval = this.state.aiEvaluations.find(e => e.projectId === proj.id);
-      
       const aiScore = aiEval ? aiEval.overallScore : null;
-      const combined = aiScore !== null ? aiScore : 0;
+      
+      // Find Organizer/Judge reviews
+      const reviews = this.state.judgeReviews.filter(r => r.projectId === proj.id);
+      let judgeAvg: number | null = null;
+      if (reviews.length > 0) {
+        const sum = reviews.reduce((acc, r) => acc + r.overallScore, 0);
+        judgeAvg = Number((sum / reviews.length).toFixed(1));
+      }
+
+      // Calculate combined score (40% AI, 60% Organizer if both exist)
+      let combined = 0;
+      if (aiScore !== null && judgeAvg !== null) {
+        combined = Number((aiScore * 0.4 + judgeAvg * 0.6).toFixed(1));
+      } else if (aiScore !== null) {
+        combined = aiScore;
+      } else if (judgeAvg !== null) {
+        combined = judgeAvg;
+      }
 
       return {
         projectId: proj.id,
         projectName: proj.projectName,
         teamName: proj.teamName,
         aiOverallScore: aiScore,
-        judgeAverageScore: null,
+        judgeAverageScore: judgeAvg,
         combinedScore: combined,
         rank: 0 // Will be set after sorting
       };

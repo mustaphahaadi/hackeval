@@ -715,8 +715,8 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                   <li>Composite placement ranking (Rank 1 to N)</li>
                   <li>Team and project titles</li>
                   <li>Real-time AI evaluator scores</li>
-                  <li>Weighted averages of Judge panel scoring card submissions</li>
-                  <li>Composite combined weighted score (40% AI, 60% Jury)</li>
+                  <li>Weighted averages of Organizer scoring card submissions</li>
+                  <li>Composite combined weighted score (40% AI, 60% Organizer)</li>
                 </ul>
               </div>
 

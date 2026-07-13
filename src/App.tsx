@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import { AuthScreen } from "./components/AuthScreen.js";
 import { Navbar } from "./components/Navbar.js";
 import { LeaderboardView } from "./components/LeaderboardView.js";
-import { ParticipantPortal } from "./components/ParticipantPortal.js";
 import { AdminDashboard } from "./components/AdminDashboard.js";
 import { AnalyticsReport } from "./components/AnalyticsReport.js";
 import { ProjectDetailView } from "./components/ProjectDetailView.js";
@@ -273,10 +272,6 @@ export default function App() {
               <div className="max-w-md mx-auto py-4 animate-fade-in">
                 <AuthScreen onLoginSuccess={handleLoginSuccess} />
               </div>
-            )}
-
-            {currentTab === "portal" && user && user.role === "Participant" && (
-              <ParticipantPortal token={token || ""} currentUser={user} onSelectProject={handleSelectProject} />
             )}
 
             {currentTab === "admin" && user && user.role === "Admin" && (

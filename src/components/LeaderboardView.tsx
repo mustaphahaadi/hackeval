@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Trophy, Search, Star, Sparkles, RefreshCw, ArrowUpRight, ArrowLeft, Calendar, ChevronRight } from "lucide-react";
+import { Trophy, Search, Star, Sparkles, RefreshCw, ArrowUpRight, ArrowLeft, Calendar, ChevronRight, Play, Check } from "lucide-react";
 import { LeaderboardRanking } from "../types";
 
 interface LeaderboardViewProps {
@@ -14,8 +14,10 @@ export function LeaderboardView({ token, onSelectProject }: LeaderboardViewProps
 
   const [leaderboard, setLeaderboard] = useState<LeaderboardRanking[]>([]);
   const [loading, setLoading] = useState(false);
+  const [evaluating, setEvaluating] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   const fetchHackathons = async () => {
     setHackathonsLoading(true);
@@ -48,6 +50,38 @@ export function LeaderboardView({ token, onSelectProject }: LeaderboardViewProps
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleEvaluateAndRankAll = async () => {
+    setError("");
+    setSuccess("");
+    setEvaluating(true);
+    try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json"
+      };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
+      const res = await fetch("/api/evaluate-all", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ hackathonId: selectedHackathon.id })
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to complete AI evaluation and ranking.");
+      }
+
+      const data = await res.json();
+      setSuccess(`Success! The AI engine successfully evaluated all ${data.evaluatedCount} submissions for this hackathon and re-calculated the official ranks.`);
+      await fetchLeaderboard(selectedHackathon.id); // Re-fetch rankings
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setEvaluating(false);
     }
   };
 
@@ -185,17 +219,36 @@ export function LeaderboardView({ token, onSelectProject }: LeaderboardViewProps
               {selectedHackathon.name}
             </h2>
             <p className="text-slate-500 text-sm mt-1 max-w-3xl">
-              {selectedHackathon.description || "Compiled score weighted composite rankings: AI Evaluation and Jury scoring."}
+              {selectedHackathon.description || "Compiled score weighted composite rankings: AI Evaluation and Organizer scoring."}
             </p>
           </div>
-          <button
-            onClick={() => fetchLeaderboard(selectedHackathon.id)}
-            disabled={loading}
-            className="self-start sm:self-center inline-flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 text-xs font-semibold rounded-lg shadow-sm transition-all cursor-pointer"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-            Refresh Rankings
-          </button>
+          <div className="flex items-center gap-3 self-start sm:self-center shrink-0">
+            <button
+              onClick={() => fetchLeaderboard(selectedHackathon.id)}
+              disabled={loading || evaluating}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 text-xs font-semibold rounded-lg shadow-sm transition-all cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${(loading && !evaluating) ? "animate-spin" : ""}`} />
+              Refresh Rankings
+            </button>
+            <button
+              onClick={handleEvaluateAndRankAll}
+              disabled={evaluating || leaderboard.length === 0}
+              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-lg text-xs font-bold shadow-sm cursor-pointer transition-colors"
+            >
+              {evaluating ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  Grading & Ranking...
+                </>
+              ) : (
+                <>
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  Analyze & Grade All
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -205,7 +258,14 @@ export function LeaderboardView({ token, onSelectProject }: LeaderboardViewProps
         </div>
       )}
 
-      {loading ? (
+      {success && (
+        <div className="bg-emerald-50 border-l-4 border-emerald-500 p-4 text-emerald-800 text-sm rounded-r-lg font-medium flex items-center gap-2">
+          <Check className="w-5 h-5 text-emerald-600 shrink-0" />
+          {success}
+        </div>
+      )}
+
+      {loading && !evaluating ? (
         <div className="flex justify-center items-center py-20">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
         </div>
@@ -218,7 +278,7 @@ export function LeaderboardView({ token, onSelectProject }: LeaderboardViewProps
       ) : (
         <>
           {/* Podium for Top 3 */}
-          {searchTerm === "" && topThree.length > 0 && (
+          {searchTerm === "" && topThree.length > 0 && topThree.some(item => item.combinedScore > 0) && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end pt-4 pb-2">
               {/* Rank 2 */}
               {topThree[1] && (
@@ -310,7 +370,7 @@ export function LeaderboardView({ token, onSelectProject }: LeaderboardViewProps
                   <th scope="col" className="px-6 py-3.5 text-left text-xs font-bold text-slate-500 uppercase tracking-wider w-16">Rank</th>
                   <th scope="col" className="px-6 py-3.5 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Project & Team</th>
                   <th scope="col" className="px-6 py-3.5 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-28">AI Score</th>
-                  <th scope="col" className="px-6 py-3.5 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-28">Judge Score</th>
+                  <th scope="col" className="px-6 py-3.5 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-28">Organizer Score</th>
                   <th scope="col" className="px-6 py-3.5 text-center text-xs font-bold text-slate-500 uppercase tracking-wider w-32">Combined (Wtd)</th>
                   <th scope="col" className="relative px-6 py-3.5 w-16">
                     <span className="sr-only">Details</span>
