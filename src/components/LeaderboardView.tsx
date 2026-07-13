@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Trophy, Search, Star, Sparkles, UserCheck, RefreshCw, Award, ArrowUpRight } from "lucide-react";
+import { Trophy, Search, Star, Sparkles, RefreshCw, ArrowUpRight, ArrowLeft, Calendar, ChevronRight } from "lucide-react";
 import { LeaderboardRanking } from "../types";
 
 interface LeaderboardViewProps {
@@ -8,12 +8,31 @@ interface LeaderboardViewProps {
 }
 
 export function LeaderboardView({ token, onSelectProject }: LeaderboardViewProps) {
+  const [hackathons, setHackathons] = useState<any[]>([]);
+  const [hackathonsLoading, setHackathonsLoading] = useState(true);
+  const [selectedHackathon, setSelectedHackathon] = useState<any | null>(null);
+
   const [leaderboard, setLeaderboard] = useState<LeaderboardRanking[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [error, setError] = useState("");
 
-  const fetchLeaderboard = async () => {
+  const fetchHackathons = async () => {
+    setHackathonsLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/hackathons");
+      if (!res.ok) throw new Error("Failed to fetch hackathons.");
+      const data = await res.json();
+      setHackathons(data);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setHackathonsLoading(false);
+    }
+  };
+
+  const fetchLeaderboard = async (hackathonId: string) => {
     setLoading(true);
     setError("");
     try {
@@ -21,7 +40,7 @@ export function LeaderboardView({ token, onSelectProject }: LeaderboardViewProps
       if (token) {
         headers["Authorization"] = `Bearer ${token}`;
       }
-      const res = await fetch("/api/leaderboard", { headers });
+      const res = await fetch(`/api/leaderboard?hackathonId=${hackathonId}`, { headers });
       if (!res.ok) throw new Error("Failed to fetch leaderboard data.");
       const data = await res.json();
       setLeaderboard(data);
@@ -33,8 +52,14 @@ export function LeaderboardView({ token, onSelectProject }: LeaderboardViewProps
   };
 
   useEffect(() => {
-    fetchLeaderboard();
+    fetchHackathons();
   }, [token]);
+
+  useEffect(() => {
+    if (selectedHackathon) {
+      fetchLeaderboard(selectedHackathon.id);
+    }
+  }, [selectedHackathon, token]);
 
   const filtered = leaderboard.filter(
     (item) =>
@@ -45,27 +70,133 @@ export function LeaderboardView({ token, onSelectProject }: LeaderboardViewProps
   const topThree = filtered.slice(0, 3);
   const remainder = filtered.slice(3);
 
+  // VIEW 1: Hackathon Selector List
+  if (selectedHackathon === null) {
+    return (
+      <div className="space-y-8 animate-fade-in">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-sans font-bold tracking-tight text-slate-900 flex items-center gap-2">
+              <Trophy className="w-7 h-7 text-amber-500 fill-amber-100" />
+              Leaderboards by Hackathon
+            </h2>
+            <p className="text-slate-500 text-sm mt-1">
+              Select a hackathon event below to view its compiled rankings, AI grades, and developer results.
+            </p>
+          </div>
+          <button
+            onClick={fetchHackathons}
+            disabled={hackathonsLoading}
+            className="self-start sm:self-center inline-flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 text-xs font-semibold rounded-lg shadow-sm transition-all cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${hackathonsLoading ? "animate-spin" : ""}`} />
+            Refresh Events
+          </button>
+        </div>
+
+        {error && (
+          <div className="bg-rose-50 border-l-4 border-rose-500 p-4 text-rose-700 text-sm rounded-r-lg font-medium">
+            {error}
+          </div>
+        )}
+
+        {hackathonsLoading ? (
+          <div className="flex justify-center items-center py-20">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
+          </div>
+        ) : hackathons.length === 0 ? (
+          <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-500 animate-fade-in">
+            <Trophy className="w-12 h-12 mx-auto text-slate-300 stroke-[1.5] mb-4" />
+            <p className="font-semibold text-lg text-slate-700">No Hackathon Events Available</p>
+            <p className="text-sm mt-1 text-slate-400">There are no hackathons registered yet.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {hackathons.map((hk) => (
+              <div
+                key={hk.id}
+                onClick={() => setSelectedHackathon(hk)}
+                className={`bg-white border border-slate-200 hover:border-indigo-300 hover:shadow-md p-6 rounded-2xl transition-all cursor-pointer group flex flex-col justify-between relative overflow-hidden ${
+                  hk.active ? "border-l-4 border-l-indigo-600" : "border-l-4 border-l-slate-300"
+                }`}
+              >
+                <div className="space-y-3">
+                  <div className="flex justify-between items-start gap-2">
+                    <h3 className="font-sans font-extrabold text-slate-900 text-base leading-snug group-hover:text-indigo-600 transition-colors line-clamp-1">
+                      {hk.name}
+                    </h3>
+                    <span className={`inline-flex px-2 py-0.5 rounded text-[9px] font-extrabold uppercase tracking-wide whitespace-nowrap ${
+                      hk.active 
+                        ? "bg-indigo-50 text-indigo-700 border border-indigo-100" 
+                        : "bg-slate-50 text-slate-500 border border-slate-200"
+                    }`}>
+                      {hk.active ? "Active" : "Ended"}
+                    </span>
+                  </div>
+                  
+                  <p className="text-slate-600 text-xs leading-relaxed line-clamp-3">
+                    {hk.description}
+                  </p>
+                </div>
+
+                <div className="border-t border-slate-100 mt-5 pt-3.5 flex justify-between items-center text-[10px] font-semibold text-slate-400 font-mono">
+                  <span className="flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                    {hk.startDate} - {hk.endDate}
+                  </span>
+                  <span className="text-indigo-600 font-extrabold group-hover:translate-x-1 transition-transform flex items-center gap-0.5">
+                    View Rankings <ChevronRight className="w-3 h-3" />
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // VIEW 2: Selected Hackathon Leaderboard
   return (
     <div className="space-y-8 animate-fade-in">
-      {/* Header and Stats */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-sans font-bold tracking-tight text-slate-900 flex items-center gap-2">
-            <Trophy className="w-7 h-7 text-amber-500 fill-amber-100" />
-            Live Rankings Leaderboard
-          </h2>
-          <p className="text-slate-500 text-sm mt-1">
-            Real-time composite rankings: 40% AI Evaluation Engine, 60% Jury Scoring weighted average.
-          </p>
-        </div>
+      {/* Back Button and Header */}
+      <div className="space-y-4">
         <button
-          onClick={fetchLeaderboard}
-          disabled={loading}
-          className="self-start sm:self-center inline-flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 text-xs font-semibold rounded-lg shadow-sm transition-all cursor-pointer"
+          onClick={() => {
+            setSelectedHackathon(null);
+            setLeaderboard([]);
+          }}
+          className="inline-flex items-center gap-1.5 text-slate-500 hover:text-slate-800 text-sm font-semibold cursor-pointer transition-colors"
         >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-          Refresh
+          <ArrowLeft className="w-4 h-4" /> Back to Hackathons
         </button>
+
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded text-[9px] font-extrabold bg-indigo-100 text-indigo-800 border border-indigo-200 uppercase tracking-wider">
+                Leaderboard Rankings
+              </span>
+              <span className="text-slate-300 text-xs">|</span>
+              <span className="text-slate-500 text-xs font-semibold">{selectedHackathon.name}</span>
+            </div>
+            <h2 className="text-3xl font-sans font-bold tracking-tight text-slate-900 mt-1 flex items-center gap-2">
+              <Trophy className="w-8 h-8 text-amber-500 fill-amber-100" />
+              {selectedHackathon.name}
+            </h2>
+            <p className="text-slate-500 text-sm mt-1 max-w-3xl">
+              {selectedHackathon.description || "Compiled score weighted composite rankings: AI Evaluation and Jury scoring."}
+            </p>
+          </div>
+          <button
+            onClick={() => fetchLeaderboard(selectedHackathon.id)}
+            disabled={loading}
+            className="self-start sm:self-center inline-flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 text-slate-600 bg-white hover:bg-slate-50 text-xs font-semibold rounded-lg shadow-sm transition-all cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
+            Refresh Rankings
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -79,10 +210,10 @@ export function LeaderboardView({ token, onSelectProject }: LeaderboardViewProps
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
         </div>
       ) : filtered.length === 0 ? (
-        <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-500">
+        <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-500 animate-fade-in">
           <Search className="w-12 h-12 mx-auto text-slate-300 stroke-[1.5] mb-4" />
-          <p className="font-semibold text-lg text-slate-700">No projects found</p>
-          <p className="text-sm mt-1">Adjust your search term or submit your project to see it on the leaderboard!</p>
+          <p className="font-semibold text-lg text-slate-700">No Submissions Found</p>
+          <p className="text-sm mt-1 text-slate-400">There are no evaluated submissions recorded for this hackathon yet.</p>
         </div>
       ) : (
         <>
@@ -93,7 +224,7 @@ export function LeaderboardView({ token, onSelectProject }: LeaderboardViewProps
               {topThree[1] && (
                 <div 
                   onClick={() => onSelectProject(topThree[1].projectId)}
-                  className="bg-white border border-slate-200 hover:border-slate-300 hover:shadow-md rounded-2xl p-6 flex flex-col items-center text-center cursor-pointer order-2 md:order-1 transition-all h-[240px] justify-between relative overflow-hidden group"
+                  className="bg-white border border-slate-200 hover:border-slate-300 hover:shadow-md rounded-2xl p-6 flex flex-col items-center text-center cursor-pointer order-2 md:order-1 transition-all h-[240px] justify-between relative overflow-hidden group shadow-sm"
                 >
                   <div className="absolute top-0 left-0 right-0 h-1.5 bg-slate-300" />
                   <div className="flex flex-col items-center">
@@ -114,7 +245,7 @@ export function LeaderboardView({ token, onSelectProject }: LeaderboardViewProps
               {topThree[0] && (
                 <div 
                   onClick={() => onSelectProject(topThree[0].projectId)}
-                  className="bg-gradient-to-b from-indigo-50/50 to-white border-2 border-amber-300 hover:border-amber-400 hover:shadow-lg rounded-2xl p-8 flex flex-col items-center text-center cursor-pointer order-1 md:order-2 transition-all h-[280px] justify-between relative overflow-hidden group"
+                  className="bg-gradient-to-b from-indigo-50/50 to-white border-2 border-amber-300 hover:border-amber-400 hover:shadow-lg rounded-2xl p-8 flex flex-col items-center text-center cursor-pointer order-1 md:order-2 transition-all h-[280px] justify-between relative overflow-hidden group shadow-md"
                 >
                   <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-amber-300 to-yellow-500" />
                   <div className="flex flex-col items-center">
@@ -122,8 +253,8 @@ export function LeaderboardView({ token, onSelectProject }: LeaderboardViewProps
                       <Trophy className="w-8 h-8 fill-amber-200" />
                     </div>
                     <h3 className="font-sans font-bold text-base text-slate-900 group-hover:text-indigo-600 transition-colors line-clamp-2">{topThree[0].projectName}</h3>
-                    <p className="text-xs font-semibold text-slate-500 mt-1 flex items-center gap-1">
-                      <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+                    <p className="text-xs font-semibold text-slate-500 mt-1 flex items-center gap-1 justify-center">
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-500 animate-spin" />
                       {topThree[0].teamName}
                     </p>
                   </div>
@@ -138,7 +269,7 @@ export function LeaderboardView({ token, onSelectProject }: LeaderboardViewProps
               {topThree[2] && (
                 <div 
                   onClick={() => onSelectProject(topThree[2].projectId)}
-                  className="bg-white border border-slate-200 hover:border-slate-300 hover:shadow-md rounded-2xl p-6 flex flex-col items-center text-center cursor-pointer order-3 md:order-3 transition-all h-[220px] justify-between relative overflow-hidden group"
+                  className="bg-white border border-slate-200 hover:border-slate-300 hover:shadow-md rounded-2xl p-6 flex flex-col items-center text-center cursor-pointer order-3 md:order-3 transition-all h-[220px] justify-between relative overflow-hidden group shadow-sm"
                 >
                   <div className="absolute top-0 left-0 right-0 h-1.5 bg-amber-600/30" />
                   <div className="flex flex-col items-center">

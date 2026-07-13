@@ -4,11 +4,17 @@ import { HackathonEvent } from "../types";
 
 interface ProjectSubmissionFormProps {
   token?: string;
-  onSuccess: () => void;
+  preselectedHackathonId?: string | null;
+  onSuccess: (hackathonId?: string) => void;
   onCancel: () => void;
 }
 
-export function ProjectSubmissionForm({ token, onSuccess, onCancel }: ProjectSubmissionFormProps) {
+export function ProjectSubmissionForm({ 
+  token, 
+  preselectedHackathonId, 
+  onSuccess, 
+  onCancel 
+}: ProjectSubmissionFormProps) {
   const [projectName, setProjectName] = useState("");
   const [teamName, setTeamName] = useState("");
   const [teamMembers, setTeamMembers] = useState("");
@@ -27,6 +33,71 @@ export function ProjectSubmissionForm({ token, onSuccess, onCancel }: ProjectSub
   const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // States for on-the-fly Hackathon Setup
+  const [showCreateHkForm, setShowCreateHkForm] = useState(false);
+  const [newHkName, setNewHkName] = useState("");
+  const [newHkDesc, setNewHkDesc] = useState("");
+  const [newHkStart, setNewHkStart] = useState("");
+  const [newHkEnd, setNewHkEnd] = useState("");
+  const [creatingHk, setCreatingHk] = useState(false);
+  const [hkSuccessMsg, setHkSuccessMsg] = useState("");
+
+  const handleCreateHackathonOnTheFly = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    setError("");
+    setHkSuccessMsg("");
+
+    if (!newHkName || !newHkDesc || !newHkStart || !newHkEnd) {
+      setError("Please fill out all fields to set up a new hackathon project.");
+      return;
+    }
+
+    setCreatingHk(true);
+    try {
+      const body = {
+        name: newHkName,
+        description: newHkDesc,
+        startDate: newHkStart,
+        endDate: newHkEnd,
+        active: true
+      };
+
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json"
+      };
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
+      const res = await fetch("/api/hackathons", {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body)
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to set up new hackathon.");
+      }
+
+      // Add to list, select it, and close form
+      setHackathonsList(prev => [...prev, data]);
+      setSelectedHackathonId(data.id);
+      setHkSuccessMsg(`Successfully set up Hackathon: "${data.name}"! It is now selected.`);
+      setShowCreateHkForm(false);
+      
+      // Clear inputs
+      setNewHkName("");
+      setNewHkDesc("");
+      setNewHkStart("");
+      setNewHkEnd("");
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setCreatingHk(false);
+    }
+  };
+
   useEffect(() => {
     const fetchHackathons = async () => {
       try {
@@ -34,12 +105,17 @@ export function ProjectSubmissionForm({ token, onSuccess, onCancel }: ProjectSub
         if (res.ok) {
           const data: HackathonEvent[] = await res.json();
           setHackathonsList(data);
-          // Auto select active hackathon or first one
-          const active = data.find(h => h.active);
-          if (active) {
-            setSelectedHackathonId(active.id);
-          } else if (data.length > 0) {
-            setSelectedHackathonId(data[0].id);
+          
+          if (preselectedHackathonId) {
+            setSelectedHackathonId(preselectedHackathonId);
+          } else {
+            // Auto select active hackathon or first one
+            const active = data.find(h => h.active);
+            if (active) {
+              setSelectedHackathonId(active.id);
+            } else if (data.length > 0) {
+              setSelectedHackathonId(data[0].id);
+            }
           }
         }
       } catch (err) {
@@ -47,7 +123,7 @@ export function ProjectSubmissionForm({ token, onSuccess, onCancel }: ProjectSub
       }
     };
     fetchHackathons();
-  }, []);
+  }, [preselectedHackathonId]);
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -120,7 +196,7 @@ export function ProjectSubmissionForm({ token, onSuccess, onCancel }: ProjectSub
         throw new Error(data.error || "Failed to submit project.");
       }
 
-      onSuccess();
+      onSuccess(selectedHackathonId);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -150,7 +226,93 @@ export function ProjectSubmissionForm({ token, onSuccess, onCancel }: ProjectSub
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Hackathon Selection */}
         <div>
-          <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Target Hackathon *</label>
+          <div className="flex justify-between items-center mb-1">
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">Target Hackathon *</label>
+            <button
+              type="button"
+              onClick={() => { setShowCreateHkForm(!showCreateHkForm); setHkSuccessMsg(""); setError(""); }}
+              className="text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1 cursor-pointer bg-none border-none p-0"
+            >
+              {showCreateHkForm ? "Cancel setup" : "+ Set up a new Hackathon"}
+            </button>
+          </div>
+
+          {hkSuccessMsg && (
+            <div className="mb-4 bg-emerald-50 border-l-4 border-emerald-500 p-3 rounded-r-lg text-emerald-700 text-xs font-medium flex items-center gap-1.5">
+              <Check className="w-4 h-4 text-emerald-600" />
+              {hkSuccessMsg}
+            </div>
+          )}
+
+          {showCreateHkForm && (
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-4 space-y-3 animate-fade-in">
+              <div className="flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-indigo-600" />
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">Set Up New Hackathon Event</h4>
+              </div>
+              
+              <div className="grid grid-cols-1 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Event Name *</label>
+                  <input
+                    type="text"
+                    value={newHkName}
+                    onChange={(e) => setNewHkName(e.target.value)}
+                    placeholder="e.g. PennApps Fall 2026"
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Description *</label>
+                  <textarea
+                    rows={2}
+                    value={newHkDesc}
+                    onChange={(e) => setNewHkDesc(e.target.value)}
+                    placeholder="e.g. Premium academic innovation hackathon focused on AI and web solutions."
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:outline-none"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Start Date *</label>
+                    <input
+                      type="date"
+                      value={newHkStart}
+                      onChange={(e) => setNewHkStart(e.target.value)}
+                      className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 mb-0.5">End Date *</label>
+                    <input
+                      type="date"
+                      value={newHkEnd}
+                      onChange={(e) => setNewHkEnd(e.target.value)}
+                      className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-2 justify-end pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateHkForm(false)}
+                  className="px-3 py-1.5 border border-slate-200 hover:bg-slate-100 text-[11px] font-semibold rounded-lg text-slate-700 cursor-pointer bg-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={creatingHk}
+                  onClick={handleCreateHackathonOnTheFly}
+                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white text-[11px] font-bold rounded-lg flex items-center gap-1 cursor-pointer border-none"
+                >
+                  {creatingHk ? "Setting up..." : "Set Up & Select"}
+                </button>
+              </div>
+            </div>
+          )}
+
           <select
             required
             value={selectedHackathonId}

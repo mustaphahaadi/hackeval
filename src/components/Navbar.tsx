@@ -18,7 +18,7 @@ export function Navbar({ user, currentTab, onChangeTab, onLogout }: NavbarProps)
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16 items-center">
           {/* Logo */}
-          <div className="flex items-center gap-2 text-indigo-600 cursor-pointer" onClick={() => onChangeTab("leaderboard")}>
+          <div className="flex items-center gap-2 text-indigo-600 cursor-pointer" onClick={() => onChangeTab("projects")}>
             <Award className="w-8 h-8 stroke-[2]" />
             <span className="font-sans font-bold text-xl tracking-tight text-slate-900">
               HackEval
@@ -27,16 +27,18 @@ export function Navbar({ user, currentTab, onChangeTab, onLogout }: NavbarProps)
 
           {/* Navigation Links */}
           <nav className="hidden md:flex space-x-1">
-            <button
-              onClick={() => onChangeTab("leaderboard")}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
-                currentTab === "leaderboard"
-                  ? "bg-indigo-50 text-indigo-700"
-                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-              }`}
-            >
-              <TrendingUp className="w-4 h-4" /> Leaderboard
-            </button>
+            {user && user.role === "Admin" && (
+              <button
+                onClick={() => onChangeTab("leaderboard")}
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+                  currentTab === "leaderboard"
+                    ? "bg-indigo-50 text-indigo-700"
+                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                }`}
+              >
+                <TrendingUp className="w-4 h-4" /> Leaderboard
+              </button>
+            )}
 
             <button
               onClick={() => onChangeTab("projects")}
@@ -46,18 +48,7 @@ export function Navbar({ user, currentTab, onChangeTab, onLogout }: NavbarProps)
                   : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
               }`}
             >
-              <FolderGit className="w-4 h-4" /> All Projects
-            </button>
-
-            <button
-              onClick={() => onChangeTab("live-analyzer")}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
-                currentTab === "live-analyzer"
-                  ? "bg-indigo-50 text-indigo-700"
-                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-              }`}
-            >
-              <Globe className="w-4 h-4" /> Live Analyzer
+              <FolderGit className="w-4 h-4" /> All Hackathons
             </button>
 
             {/* Public Submit Project Button */}
@@ -143,29 +134,23 @@ export function Navbar({ user, currentTab, onChangeTab, onLogout }: NavbarProps)
 
       {/* Mobile Nav Links */}
       <div className="md:hidden flex border-t border-slate-100 divide-x divide-slate-100 bg-white">
-        <button
-          onClick={() => onChangeTab("leaderboard")}
-          className={`flex-1 text-center py-2.5 text-xs font-semibold ${
-            currentTab === "leaderboard" ? "text-indigo-600 bg-indigo-50/50" : "text-slate-600"
-          }`}
-        >
-          Leaderboard
-        </button>
+        {user && user.role === "Admin" && (
+          <button
+            onClick={() => onChangeTab("leaderboard")}
+            className={`flex-1 text-center py-2.5 text-xs font-semibold ${
+              currentTab === "leaderboard" ? "text-indigo-600 bg-indigo-50/50" : "text-slate-600"
+            }`}
+          >
+            Leaderboard
+          </button>
+        )}
         <button
           onClick={() => onChangeTab("projects")}
           className={`flex-1 text-center py-2.5 text-xs font-semibold ${
             currentTab === "projects" ? "text-indigo-600 bg-indigo-50/50" : "text-slate-600"
           }`}
         >
-          All Projects
-        </button>
-        <button
-          onClick={() => onChangeTab("live-analyzer")}
-          className={`flex-1 text-center py-2.5 text-xs font-semibold ${
-            currentTab === "live-analyzer" ? "text-indigo-600 bg-indigo-50/50" : "text-slate-600"
-          }`}
-        >
-          Live Analyzer
+          All Hackathons
         </button>
 
         {(!user || user.role !== "Admin") && (
