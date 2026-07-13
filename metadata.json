@@ -1,0 +1,6 @@
+{
+  "name": "Hackathon Evaluation and Judging Platform",
+  "description": "A full-stack platform for submitting hackathon projects, performing real-time GitHub repository analyses, generating AI evaluations using Gemini, and enabling judges and admins to manage scoring and leaderboards.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
