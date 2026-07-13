@@ -7,6 +7,7 @@ import { JudgeDashboard } from "./components/JudgeDashboard.js";
 import { AdminDashboard } from "./components/AdminDashboard.js";
 import { AnalyticsReport } from "./components/AnalyticsReport.js";
 import { ProjectDetailView } from "./components/ProjectDetailView.js";
+import { LiveAnalyzerView } from "./components/LiveAnalyzerView.js";
 
 import { 
   FolderGit, Eye, Search, Plus, Award, 
@@ -220,6 +221,10 @@ export default function App() {
 
             {currentTab === "admin" && user.role === "Admin" && (
               <AdminDashboard token={token} />
+            )}
+
+            {currentTab === "live-analyzer" && (
+              <LiveAnalyzerView token={token} />
             )}
           </>
         )}

@@ -13,7 +13,8 @@ import {
   Comment,
   Certificate,
   LeaderboardRanking,
-  UserRole
+  UserRole,
+  LiveAnalysisResult
 } from "./types.js";
 
 // Database storage location
@@ -31,6 +32,7 @@ interface DBState {
   judgeReviews: JudgeReview[];
   comments: Comment[];
   certificates: Certificate[];
+  liveAnalyses: LiveAnalysisResult[];
 }
 
 // Initial default state with robust seed data
@@ -44,7 +46,8 @@ const DEFAULT_STATE = (): DBState => ({
   aiEvaluations: [],
   judgeReviews: [],
   comments: [],
-  certificates: []
+  certificates: [],
+  liveAnalyses: []
 });
 
 class LocalDB {
@@ -81,7 +84,7 @@ class LocalDB {
   private ensureArrays() {
     const keys: (keyof DBState)[] = [
       "users", "teams", "participants", "hackathons", "projects", 
-      "githubAnalyses", "aiEvaluations", "judgeReviews", "comments", "certificates"
+      "githubAnalyses", "aiEvaluations", "judgeReviews", "comments", "certificates", "liveAnalyses"
     ];
     for (const key of keys) {
       if (!Array.isArray(this.state[key])) {
@@ -365,6 +368,19 @@ class LocalDB {
   getJudgeReviews() { return this.state.judgeReviews; }
   getComments() { return this.state.comments; }
   getCertificates() { return this.state.certificates; }
+  getLiveAnalyses() { return this.state.liveAnalyses || []; }
+
+  saveLiveAnalysis(analysis: LiveAnalysisResult): LiveAnalysisResult {
+    if (!this.state.liveAnalyses) {
+      this.state.liveAnalyses = [];
+    }
+    this.state.liveAnalyses.unshift(analysis);
+    if (this.state.liveAnalyses.length > 50) {
+      this.state.liveAnalyses = this.state.liveAnalyses.slice(0, 50);
+    }
+    this.save();
+    return analysis;
+  }
 
   // --- CRUD METHODS ---
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Shield, Users, Award, Calendar, RefreshCw, AlertCircle, Plus, Check, Trash, Power } from "lucide-react";
+import { Shield, Users, Award, Calendar, RefreshCw, AlertCircle, Plus, Check, Trash, Power, Download, Edit, Save, X, Search, FolderGit } from "lucide-react";
 import { User, HackathonEvent, ProjectSubmission } from "../types";
 
 interface AdminDashboardProps {
@@ -11,10 +11,20 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
   const [hackathons, setHackathons] = useState<HackathonEvent[]>([]);
   const [projects, setProjects] = useState<ProjectSubmission[]>([]);
   
-  const [subTab, setSubTab] = useState<"roles" | "certs" | "events">("roles");
+  const [subTab, setSubTab] = useState<"roles" | "teams" | "certs" | "events" | "export">("roles");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  // Team management states
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+  const [editProjectName, setEditProjectName] = useState("");
+  const [editTeamName, setEditTeamName] = useState("");
+  const [editTeamMembers, setEditTeamMembers] = useState("");
+  const [editGithubUrl, setEditGithubUrl] = useState("");
+  const [editLiveUrl, setEditLiveUrl] = useState("");
+  const [editTeamSearchTerm, setEditTeamSearchTerm] = useState("");
+  const [exportLoading, setExportLoading] = useState(false);
 
   // Certificate form states
   const [selectedProjectId, setSelectedProjectId] = useState("");
@@ -185,6 +195,99 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
     }
   };
 
+  const handleStartEdit = (p: ProjectSubmission) => {
+    setEditingProjectId(p.id);
+    setEditProjectName(p.projectName);
+    setEditTeamName(p.teamName);
+    setEditTeamMembers(p.teamMembers || "");
+    setEditGithubUrl(p.githubUrl || "");
+    setEditLiveUrl(p.liveUrl || "");
+  };
+
+  const handleCancelEdit = () => {
+    setEditingProjectId(null);
+  };
+
+  const handleSaveTeamEdit = async (projectId: string) => {
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch(`/api/projects/${projectId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          projectName: editProjectName,
+          teamName: editTeamName,
+          teamMembers: editTeamMembers,
+          githubUrl: editGithubUrl,
+          liveUrl: editLiveUrl
+        })
+      });
+
+      if (!res.ok) throw new Error("Failed to update team details.");
+      setSuccess("Team details updated successfully.");
+      setEditingProjectId(null);
+      fetchData();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const handleExportCSV = async () => {
+    setError("");
+    setSuccess("");
+    setExportLoading(true);
+    try {
+      const res = await fetch("/api/leaderboard", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Failed to fetch current leaderboard rankings for export.");
+      const leaderboardData = await res.json();
+
+      if (leaderboardData.length === 0) {
+        throw new Error("No evaluated teams are available to export yet.");
+      }
+
+      const headers = [
+        "Rank",
+        "Project Name",
+        "Team Name",
+        "AI Evaluation Score",
+        "Judge Average Score",
+        "Combined Weighted Score"
+      ];
+
+      const rows = leaderboardData.map((item: any) => [
+        item.rank,
+        `"${item.projectName.replace(/"/g, '""')}"`,
+        `"${item.teamName.replace(/"/g, '""')}"`,
+        item.aiOverallScore !== null ? item.aiOverallScore : "Pending",
+        item.judgeAverageScore !== null ? item.judgeAverageScore : "Pending",
+        item.combinedScore > 0 ? item.combinedScore : "Unranked"
+      ]);
+
+      const csvContent = "data:text/csv;charset=utf-8," 
+        + [headers.join(","), ...rows.map((e: any) => e.join(","))].join("\n");
+      
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `hackathon_leaderboard_results_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      setSuccess("Leaderboard results exported successfully to CSV!");
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-8 animate-fade-in">
       {/* Header */}
@@ -223,7 +326,7 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
       )}
 
       {/* Sub tabs */}
-      <div className="border-b border-slate-200 flex space-x-6 text-sm">
+      <div className="border-b border-slate-200 flex flex-wrap gap-x-6 gap-y-2 text-sm">
         <button
           onClick={() => setSubTab("roles")}
           className={`pb-3 font-semibold transition-all border-b-2 cursor-pointer ${
@@ -232,6 +335,15 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
         >
           <Users className="w-4 h-4 inline mr-1" />
           User Permissions ({users.length})
+        </button>
+        <button
+          onClick={() => setSubTab("teams")}
+          className={`pb-3 font-semibold transition-all border-b-2 cursor-pointer ${
+            subTab === "teams" ? "border-indigo-600 text-indigo-600 font-bold" : "border-transparent text-slate-500 hover:text-slate-900"
+          }`}
+        >
+          <FolderGit className="w-4 h-4 inline mr-1" />
+          Manage Teams ({projects.length})
         </button>
         <button
           onClick={() => setSubTab("certs")}
@@ -250,6 +362,15 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
         >
           <Calendar className="w-4 h-4 inline mr-1" />
           Hackathon Events ({hackathons.length})
+        </button>
+        <button
+          onClick={() => setSubTab("export")}
+          className={`pb-3 font-semibold transition-all border-b-2 cursor-pointer ${
+            subTab === "export" ? "border-indigo-600 text-indigo-600 font-bold" : "border-transparent text-slate-500 hover:text-slate-900"
+          }`}
+        >
+          <Download className="w-4 h-4 inline mr-1" />
+          Export Results
         </button>
       </div>
 
@@ -315,6 +436,204 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                   </tbody>
                 </table>
               </div>
+            </div>
+          )}
+
+          {subTab === "teams" && (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-4">
+                <div>
+                  <h3 className="font-sans font-bold text-slate-900 text-lg">Manage Registered Teams</h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Edit project details, modify team name / members, and monitor tech stacks across all event registrations.
+                  </p>
+                </div>
+                <div className="w-full sm:w-72 relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                    <Search className="w-4 h-4" />
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Search teams or projects..."
+                    value={editTeamSearchTerm}
+                    onChange={(e) => setEditTeamSearchTerm(e.target.value)}
+                    className="w-full pl-9 pr-3 py-1.5 border border-slate-300 rounded-lg text-xs shadow-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              {projects.filter(p => 
+                p.projectName.toLowerCase().includes(editTeamSearchTerm.toLowerCase()) ||
+                p.teamName.toLowerCase().includes(editTeamSearchTerm.toLowerCase()) ||
+                (p.teamMembers || "").toLowerCase().includes(editTeamSearchTerm.toLowerCase())
+              ).length === 0 ? (
+                <div className="text-center py-12 text-slate-400 text-sm">
+                  No registered teams match your search keyword.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {projects.filter(p => 
+                    p.projectName.toLowerCase().includes(editTeamSearchTerm.toLowerCase()) ||
+                    p.teamName.toLowerCase().includes(editTeamSearchTerm.toLowerCase()) ||
+                    (p.teamMembers || "").toLowerCase().includes(editTeamSearchTerm.toLowerCase())
+                  ).map((proj) => {
+                    const isEditing = editingProjectId === proj.id;
+                    return (
+                      <div key={proj.id} className="border border-slate-200 rounded-xl p-5 hover:shadow-sm transition-all bg-slate-50/20">
+                        {isEditing ? (
+                          <div className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Project Title</label>
+                                <input
+                                  type="text"
+                                  value={editProjectName}
+                                  onChange={(e) => setEditProjectName(e.target.value)}
+                                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs focus:ring-1 focus:ring-indigo-500 outline-none bg-white font-semibold text-slate-800"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Team Name</label>
+                                <input
+                                  type="text"
+                                  value={editTeamName}
+                                  onChange={(e) => setEditTeamName(e.target.value)}
+                                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs focus:ring-1 focus:ring-indigo-500 outline-none bg-white font-semibold text-slate-800"
+                                />
+                              </div>
+                            </div>
+
+                            <div>
+                              <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Team Members (comma separated)</label>
+                              <input
+                                type="text"
+                                value={editTeamMembers}
+                                onChange={(e) => setEditTeamMembers(e.target.value)}
+                                className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs focus:ring-1 focus:ring-indigo-500 outline-none bg-white"
+                              />
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">GitHub URL</label>
+                                <input
+                                  type="url"
+                                  value={editGithubUrl}
+                                  onChange={(e) => setEditGithubUrl(e.target.value)}
+                                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs focus:ring-1 focus:ring-indigo-500 outline-none bg-white"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Live Demo URL</label>
+                                <input
+                                  type="url"
+                                  value={editLiveUrl}
+                                  onChange={(e) => setEditLiveUrl(e.target.value)}
+                                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs focus:ring-1 focus:ring-indigo-500 outline-none bg-white"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                              <button
+                                type="button"
+                                onClick={handleCancelEdit}
+                                className="px-3 py-1 bg-white hover:bg-slate-50 border border-slate-200 rounded text-xs font-semibold text-slate-500 cursor-pointer"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleSaveTeamEdit(proj.id)}
+                                className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 rounded text-xs font-semibold text-white cursor-pointer inline-flex items-center gap-1"
+                              >
+                                <Save className="w-3.5 h-3.5" /> Save Changes
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <div className="space-y-1.5">
+                              <div className="flex items-center gap-2">
+                                <h4 className="font-bold text-slate-900 text-sm">{proj.projectName}</h4>
+                                <span className={`inline-flex px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase ${
+                                  proj.status === "evaluated" ? "bg-emerald-50 text-emerald-700 border border-emerald-100" : "bg-amber-50 text-amber-700 border border-amber-100"
+                                }`}>
+                                  {proj.status === "evaluated" ? "Scored" : "Pending AI"}
+                                </span>
+                              </div>
+                              <p className="text-xs text-slate-600 font-medium">Team: <span className="font-bold text-slate-800">{proj.teamName}</span></p>
+                              
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {(proj.teamMembers || "").split(",").map((m: string, idx: number) => (
+                                  <span key={idx} className="bg-slate-100 text-slate-700 rounded text-[10px] px-2 py-0.5 font-medium border border-slate-200">
+                                    {m.trim()}
+                                  </span>
+                                ))}
+                              </div>
+
+                              <div className="text-[11px] text-slate-400 space-y-0.5 pt-1.5 font-mono">
+                                {proj.githubUrl && <div className="truncate">GitHub: <a href={proj.githubUrl} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">{proj.githubUrl}</a></div>}
+                                {proj.liveUrl && <div className="truncate">Live Demo: <a href={proj.liveUrl} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">{proj.liveUrl}</a></div>}
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleStartEdit(proj)}
+                              className="px-2.5 py-1 text-xs font-semibold text-slate-600 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg shadow-sm transition-all cursor-pointer self-start md:self-center inline-flex items-center gap-1 shrink-0"
+                            >
+                              <Edit className="w-3.5 h-3.5" /> Edit details
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {subTab === "export" && (
+            <div className="space-y-6 max-w-xl mx-auto text-center py-6">
+              <div className="w-16 h-16 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-4">
+                <Download className="w-8 h-8" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="font-sans font-bold text-slate-900 text-lg">Export Hackathon Results</h3>
+                <p className="text-sm text-slate-500 max-w-md mx-auto leading-relaxed">
+                  Generate and download a comprehensive CSV report containing official ranks, final scores, and participant details. Perfect for spreadsheet analysis, post-hackathon wrap-ups, or custom award rosters.
+                </p>
+              </div>
+
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs text-left text-slate-600 max-w-md mx-auto space-y-2 font-sans leading-relaxed">
+                <div className="font-bold text-slate-800 uppercase tracking-wider text-[10px]">What is included in the export?</div>
+                <ul className="list-disc list-inside space-y-1 pl-1">
+                  <li>Composite placement ranking (Rank 1 to N)</li>
+                  <li>Team and project titles</li>
+                  <li>Real-time AI evaluator scores</li>
+                  <li>Weighted averages of Judge panel scoring card submissions</li>
+                  <li>Composite combined weighted score (40% AI, 60% Jury)</li>
+                </ul>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleExportCSV}
+                disabled={exportLoading}
+                className="inline-flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-sm font-bold rounded-xl text-white shadow-md disabled:opacity-50 transition-all cursor-pointer"
+              >
+                {exportLoading ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" /> Compiling Report...
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4" /> Download CSV Results Report
+                  </>
+                )}
+              </button>
             </div>
           )}
 

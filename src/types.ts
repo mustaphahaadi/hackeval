@@ -156,3 +156,26 @@ export interface Certificate {
   issuedAt: string;
   certificateCode: string;
 }
+
+export interface LiveAnalysisIssue {
+  type: "performance" | "accessibility" | "seo" | "ux" | "security" | "mobile";
+  severity: "high" | "medium" | "low";
+  message: string;
+  recommendation: string;
+}
+
+export interface LiveAnalysisResult {
+  url: string;
+  available: boolean;
+  statusCode: number;
+  responseTimeMs: number;
+  performance_score: number;
+  accessibility_score: number;
+  seo_score: number;
+  ux_score: number;
+  security_score: number;
+  mobile_responsiveness_score: number;
+  issues: LiveAnalysisIssue[];
+  analyzedAt: string;
+}
+

@@ -1,5 +1,5 @@
 import React from "react";
-import { Award, LogOut, TrendingUp, FolderGit, Shield, FileSpreadsheet, UserCheck, Settings } from "lucide-react";
+import { Award, LogOut, TrendingUp, FolderGit, Shield, FileSpreadsheet, UserCheck, Settings, Globe } from "lucide-react";
 
 interface NavbarProps {
   user: {
@@ -47,6 +47,17 @@ export function Navbar({ user, currentTab, onChangeTab, onLogout }: NavbarProps)
               }`}
             >
               <FolderGit className="w-4 h-4" /> All Projects
+            </button>
+
+            <button
+              onClick={() => onChangeTab("live-analyzer")}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold transition-all ${
+                currentTab === "live-analyzer"
+                  ? "bg-indigo-50 text-indigo-700"
+                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+              }`}
+            >
+              <Globe className="w-4 h-4" /> Live Analyzer
             </button>
 
             {user.role === "Participant" && (
@@ -144,6 +155,14 @@ export function Navbar({ user, currentTab, onChangeTab, onLogout }: NavbarProps)
           }`}
         >
           All Projects
+        </button>
+        <button
+          onClick={() => onChangeTab("live-analyzer")}
+          className={`flex-1 text-center py-2 text-xs font-semibold ${
+            currentTab === "live-analyzer" ? "text-indigo-600 bg-indigo-50/50" : "text-slate-600"
+          }`}
+        >
+          Live Analyzer
         </button>
         {user.role === "Participant" && (
           <button

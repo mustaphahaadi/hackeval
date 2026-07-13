@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { 
   ArrowLeft, ExternalLink, Github, Sparkles, Star, Award, 
   Layers, PlayCircle, MessageSquare, Send, RefreshCw, SendIcon, ShieldAlert, CheckCircle, ChevronDown, Check, Info, FileText,
-  Lock, Shield, GitBranch, GitPullRequest, AlertTriangle, CheckSquare, Square
+  Lock, Shield, GitBranch, GitPullRequest, AlertTriangle, CheckSquare, Square, Globe
 } from "lucide-react";
 import { ProjectSubmission, GitHubAnalysis, AIEvaluation, JudgeReview, Comment, UserRole } from "../types";
 
@@ -44,6 +44,52 @@ export function ProjectDetailView({ projectId, token, currentUser, onBack }: Pro
   const [evalLoading, setEvalLoading] = useState(false);
   const [evalSuccessMsg, setEvalSuccessMsg] = useState("");
 
+  // Live website analyzer states
+  const [liveAnalysis, setLiveAnalysis] = useState<any>(null);
+  const [liveAnalysisLoading, setLiveAnalysisLoading] = useState(false);
+  const [liveAnalysisError, setLiveAnalysisError] = useState("");
+
+  const fetchSavedLiveAnalysis = async (targetUrl: string) => {
+    if (!targetUrl) return;
+    try {
+      const res = await fetch("/api/live-analyses", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const list = await res.json();
+        const matched = list.find((h: any) => h.url.toLowerCase().trim() === targetUrl.toLowerCase().trim() || h.url.toLowerCase().trim().includes(targetUrl.toLowerCase().trim()));
+        if (matched) {
+          setLiveAnalysis(matched);
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to fetch matching live analysis log:", e);
+    }
+  };
+
+  const handleTriggerLiveAudit = async () => {
+    if (!project || !project.liveUrl) return;
+    setLiveAnalysisLoading(true);
+    setLiveAnalysisError("");
+    try {
+      const res = await fetch("/api/analyze-website", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ url: project.liveUrl })
+      });
+      if (!res.ok) throw new Error("Server rejected the live web audit request.");
+      const data = await res.json();
+      setLiveAnalysis(data);
+    } catch (err: any) {
+      setLiveAnalysisError(err.message || "Failed to analyze website.");
+    } finally {
+      setLiveAnalysisLoading(false);
+    }
+  };
+
   const fetchProjectDetails = async () => {
     setLoading(true);
     setError("");
@@ -54,6 +100,10 @@ export function ProjectDetailView({ projectId, token, currentUser, onBack }: Pro
       if (!res.ok) throw new Error("Failed to fetch project submission.");
       const data = await res.json();
       setProject(data);
+      
+      if (data.liveUrl) {
+        fetchSavedLiveAnalysis(data.liveUrl);
+      }
       
       // Seed scores if they already have reviews
       const myReview = data.judgeReviews?.find((r: any) => r.judgeId === currentUser.id);
@@ -605,6 +655,122 @@ export function ProjectDetailView({ projectId, token, currentUser, onBack }: Pro
             ) : (
               <div className="text-center py-6 text-slate-400 text-sm">
                 No GitHub repository statistics have been fetched for this project. Triggering an evaluation will parse these automatically.
+              </div>
+            )}
+          </div>
+
+          {/* --- LIVE WEBSITE & UX AUDIT CARD --- */}
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-sm space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-slate-100 pb-4">
+              <div>
+                <h2 className="text-lg font-sans font-extrabold text-slate-950 flex items-center gap-2">
+                  <Globe className="w-5 h-5 text-indigo-600" />
+                  Live Deployment & UX Audit
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Automated latency, performance, security headers, and visual accessibility diagnostic checks.
+                </p>
+              </div>
+              {project?.liveUrl && (
+                <button
+                  onClick={handleTriggerLiveAudit}
+                  disabled={liveAnalysisLoading}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold rounded-lg transition-all shadow-sm cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${liveAnalysisLoading ? "animate-spin" : ""}`} />
+                  {liveAnalysisLoading ? "Auditing App..." : "Audit Now"}
+                </button>
+              )}
+            </div>
+
+            {liveAnalysisError && (
+              <div className="p-3 bg-rose-50 border border-rose-100 text-rose-700 text-xs rounded-xl flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
+                <span>{liveAnalysisError}</span>
+              </div>
+            )}
+
+            {!project?.liveUrl ? (
+              <div className="text-center py-6 text-slate-400 text-xs italic">
+                No active deployed live application URL was supplied for this project submission.
+              </div>
+            ) : liveAnalysisLoading ? (
+              <div className="p-8 text-center space-y-3">
+                <RefreshCw className="w-8 h-8 text-indigo-600 animate-spin mx-auto" />
+                <h4 className="text-xs font-bold text-slate-700">Executing Deep Lighthouse & Gemini UX Audit</h4>
+                <p className="text-[10px] text-slate-400 italic max-w-sm mx-auto leading-relaxed">
+                  Crawling page references, scanning security response headers, running PageSpeed tests, and compiling diagnostic recommendation guides.
+                </p>
+              </div>
+            ) : liveAnalysis ? (
+              <div className="space-y-6 animate-fade-in">
+                {/* Score indicators */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+                  {[
+                    { label: "Speed", score: liveAnalysis.performance_score, color: "text-emerald-600", bg: "bg-emerald-50" },
+                    { label: "A11y", score: liveAnalysis.accessibility_score, color: "text-indigo-600", bg: "bg-indigo-50" },
+                    { label: "SEO", score: liveAnalysis.seo_score, color: "text-amber-600", bg: "bg-amber-50" },
+                    { label: "UX Flow", score: liveAnalysis.ux_score, color: "text-rose-600", bg: "bg-rose-50" },
+                    { label: "Security", score: liveAnalysis.security_score, color: "text-cyan-600", bg: "bg-cyan-50" },
+                    { label: "Mobile", score: liveAnalysis.mobile_responsiveness_score, color: "text-fuchsia-600", bg: "bg-fuchsia-50" }
+                  ].map((gauge, i) => (
+                    <div key={i} className="border border-slate-100 p-2.5 rounded-xl text-center space-y-1 bg-slate-50/50">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">{gauge.label}</span>
+                      <span className={`text-base font-extrabold font-mono block ${gauge.color}`}>
+                        {gauge.score}%
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Audit summary indicators */}
+                <div className="bg-slate-900 text-slate-100 p-4 rounded-xl flex justify-between items-center text-xs font-mono">
+                  <span>Server Status: <span className={liveAnalysis.available ? "text-emerald-400 font-bold" : "text-rose-400 font-bold"}>{liveAnalysis.available ? "ONLINE" : "OFFLINE"}</span></span>
+                  <span>Latency: <span className="text-indigo-300 font-bold">{liveAnalysis.responseTimeMs}ms</span></span>
+                  <span>Code: <span className="text-amber-400 font-bold">{liveAnalysis.statusCode || "---"}</span></span>
+                </div>
+
+                {/* Issues list preview */}
+                {liveAnalysis.issues && liveAnalysis.issues.length > 0 ? (
+                  <div className="space-y-2.5">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                      <AlertTriangle className="w-4 h-4 text-amber-500" />
+                      Discovered Compliance & UX Defects ({liveAnalysis.issues.length})
+                    </h3>
+                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                      {liveAnalysis.issues.map((iss: any, idx: number) => (
+                        <div key={idx} className="p-3 bg-slate-50 border border-slate-100 rounded-lg text-xs space-y-1.5 hover:bg-slate-100/50 transition-all">
+                          <div className="flex justify-between items-center">
+                            <span className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded border ${
+                              iss.severity === "high" ? "bg-rose-50 text-rose-700 border-rose-100" :
+                              iss.severity === "medium" ? "bg-amber-50 text-amber-700 border-amber-100" :
+                              "bg-slate-100 text-slate-600 border-slate-200"
+                            }`}>
+                              {iss.severity} Severity
+                            </span>
+                            <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">{iss.type}</span>
+                          </div>
+                          <p className="font-bold text-slate-800 leading-tight">{iss.message}</p>
+                          <p className="text-[11px] text-slate-500 leading-relaxed">{iss.recommendation}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-4 text-slate-400 text-xs italic flex items-center justify-center gap-1.5">
+                    <CheckCircle className="w-4 h-4 text-emerald-500" /> Perfect web compliance score! No issues discovered.
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-8 bg-slate-50/50 rounded-xl border border-dashed border-slate-200 text-slate-500 text-xs space-y-2">
+                <Globe className="w-10 h-10 text-slate-300 mx-auto" />
+                <div>
+                  <h4 className="font-bold text-slate-700">Live Audit Data Unavailable</h4>
+                  <p className="text-slate-400 mt-0.5 max-w-sm mx-auto">
+                    Evaluate this submission's deployed website to parse real-time compliance results.
+                  </p>
+                </div>
               </div>
             )}
           </div>
