@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 import bcrypt from "bcryptjs";
 import { initializeApp } from "firebase/app";
 import { initializeFirestore, doc, setDoc, deleteDoc, getDocs, collection } from "firebase/firestore";
@@ -25,10 +26,25 @@ let dbFirestore: any = null;
 
 try {
   let firebaseConfig: any = null;
+  let currentDir = "";
+  try {
+    currentDir = path.dirname(fileURLToPath(import.meta.url));
+  } catch (e) {
+    currentDir = "";
+  }
+
   const pathsToSearch = [
     path.join(process.cwd(), "firebase-applet-config.json"),
-    path.join(process.cwd(), "dist", "firebase-applet-config.json")
+    path.join(process.cwd(), "dist", "firebase-applet-config.json"),
+    path.join(process.cwd(), "..", "firebase-applet-config.json"),
+    path.join(process.cwd(), "api", "firebase-applet-config.json")
   ];
+
+  if (currentDir) {
+    pathsToSearch.push(path.join(currentDir, "firebase-applet-config.json"));
+    pathsToSearch.push(path.join(currentDir, "..", "firebase-applet-config.json"));
+    pathsToSearch.push(path.join(currentDir, "../..", "firebase-applet-config.json"));
+  }
 
   for (const p of pathsToSearch) {
     if (fs.existsSync(p)) {
@@ -136,8 +152,8 @@ class LocalDB {
         "githubAnalyses", "aiEvaluations", "judgeReviews", "comments", "certificates", "liveAnalyses"
       ];
 
-      // Load all collections from Firestore with self-healing / seeding for empty collections
-      for (const colName of collectionsList) {
+      // Load all collections from Firestore in parallel with self-healing / seeding for empty collections
+      await Promise.all(collectionsList.map(async (colName) => {
         try {
           const querySnapshot = await withTimeout(getDocs(collection(dbFirestore, colName)), 4000, `load collection ${colName}`);
           
@@ -169,10 +185,10 @@ class LocalDB {
             const localItems = this.state[colName as keyof DBState] || [];
             if (localItems.length > 0) {
               console.log(`Firestore collection ${colName} is empty. Seeding it with ${localItems.length} default items...`);
-              for (const item of localItems) {
+              await Promise.all(localItems.map(async (item) => {
                 const docId = (item as any).id || (item as any).url || "default";
                 await withTimeout(setDoc(doc(dbFirestore, colName, docId), item), 2000, `seed setDoc ${colName}/${docId}`);
-              }
+              }));
               // Keep the local state
               console.log(`Seeded ${colName} collection successfully in Firestore.`);
             } else {
@@ -182,7 +198,7 @@ class LocalDB {
         } catch (colErr) {
           console.error(`Failed to load/seed collection ${colName} from Firestore, keeping local file/memory data:`, colErr);
         }
-      }
+      }));
       this.isInitialized = true;
       console.log("Firestore initialization and self-healing completed.");
     } catch (error) {
