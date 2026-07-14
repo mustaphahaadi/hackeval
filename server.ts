@@ -324,6 +324,20 @@ app.put("/api/projects/:id", authenticateToken, (req: AuthRequest, res: Response
   }
 });
 
+// DELETE /projects/{id}
+app.delete("/api/projects/:id", authenticateToken, authorizeRoles("Admin"), (req: AuthRequest, res: Response) => {
+  try {
+    const success = db.deleteProject(req.params.id);
+    if (!success) {
+      res.status(404).json({ error: "Project submission not found." });
+      return;
+    }
+    res.json({ success: true, message: "Project deleted successfully." });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 // --- GITHUB INTEGRATION API ---
 
@@ -1575,6 +1589,20 @@ app.get("/api/certificates", optionalAuthenticateToken, (req: AuthRequest, res: 
   }
 });
 
+// DELETE /api/certificates/:id
+app.delete("/api/certificates/:id", authenticateToken, authorizeRoles("Admin"), (req: Request, res: Response) => {
+  try {
+    const success = db.deleteCertificate(req.params.id);
+    if (!success) {
+      res.status(404).json({ error: "Certificate was not found." });
+      return;
+    }
+    res.json({ success: true, message: "Certificate revoked successfully." });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 // HACKATHON EVENT MGMT
 app.get("/api/hackathons", (req: Request, res: Response) => {
@@ -1610,6 +1638,20 @@ app.put("/api/hackathons/:id", authenticateToken, authorizeRoles("Admin"), (req:
       return;
     }
     res.json(updated);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE /api/hackathons/:id
+app.delete("/api/hackathons/:id", authenticateToken, authorizeRoles("Admin"), (req: Request, res: Response) => {
+  try {
+    const success = db.deleteHackathon(req.params.id);
+    if (!success) {
+      res.status(404).json({ error: "Hackathon event was not found." });
+      return;
+    }
+    res.json({ success: true, message: "Hackathon deleted successfully." });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

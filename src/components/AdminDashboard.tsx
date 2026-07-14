@@ -10,11 +10,17 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
   const [users, setUsers] = useState<User[]>([]);
   const [hackathons, setHackathons] = useState<HackathonEvent[]>([]);
   const [projects, setProjects] = useState<ProjectSubmission[]>([]);
+  const [certificates, setCertificates] = useState<any[]>([]);
   
   const [subTab, setSubTab] = useState<"roles" | "teams" | "certs" | "events" | "export">("roles");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  // Deletion confirmation states
+  const [confirmDeleteProjId, setConfirmDeleteProjId] = useState<string | null>(null);
+  const [confirmDeleteHkId, setConfirmDeleteHkId] = useState<string | null>(null);
+  const [confirmDeleteCertId, setConfirmDeleteCertId] = useState<string | null>(null);
 
   // Hackathon detailed view
   const [selectedHk, setSelectedHk] = useState<HackathonEvent | null>(null);
@@ -141,6 +147,15 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
         if (pData.length > 0 && !selectedProjectId) {
           setSelectedProjectId(pData[0].id);
         }
+      }
+
+      // Fetch Certificates
+      const cRes = await fetch("/api/certificates", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (cRes.ok) {
+        const cData = await cRes.json();
+        setCertificates(cData);
       }
     } catch (err: any) {
       setError(err.message);
@@ -301,6 +316,57 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
       if (!res.ok) throw new Error("Failed to update team details.");
       setSuccess("Team details updated successfully.");
       setEditingProjectId(null);
+      fetchData();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const handleDeleteProject = async (id: string) => {
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch(`/api/projects/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Failed to delete project submission.");
+      setSuccess("Project submission deleted successfully.");
+      setConfirmDeleteProjId(null);
+      fetchData();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const handleDeleteHackathon = async (id: string) => {
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch(`/api/hackathons/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Failed to delete hackathon event.");
+      setSuccess("Hackathon event and all associated projects deleted successfully.");
+      setConfirmDeleteHkId(null);
+      fetchData();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const handleDeleteCertificate = async (id: string) => {
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch(`/api/certificates/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Failed to revoke certificate.");
+      setSuccess("Certificate/award revoked successfully.");
+      setConfirmDeleteCertId(null);
       fetchData();
     } catch (err: any) {
       setError(err.message);
@@ -680,13 +746,43 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                               </div>
                             </div>
 
-                            <button
-                              type="button"
-                              onClick={() => handleStartEdit(proj)}
-                              className="px-2.5 py-1 text-xs font-semibold text-slate-600 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg shadow-sm transition-all cursor-pointer self-start md:self-center inline-flex items-center gap-1 shrink-0"
-                            >
-                              <Edit className="w-3.5 h-3.5" /> Edit details
-                            </button>
+                            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 shrink-0 self-start md:self-center">
+                              <button
+                                type="button"
+                                onClick={() => handleStartEdit(proj)}
+                                className="px-2.5 py-1 text-xs font-semibold text-slate-600 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg shadow-sm transition-all cursor-pointer inline-flex items-center gap-1"
+                              >
+                                <Edit className="w-3.5 h-3.5" /> Edit details
+                              </button>
+
+                              {confirmDeleteProjId === proj.id ? (
+                                <div className="flex items-center gap-1.5 bg-rose-50 border border-rose-200 rounded-lg p-1">
+                                  <span className="text-[10px] text-rose-700 font-bold px-1">Are you sure?</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteProject(proj.id)}
+                                    className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[10px] font-bold cursor-pointer transition-colors"
+                                  >
+                                    Yes
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmDeleteProjId(null)}
+                                    className="px-2 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-[10px] font-bold cursor-pointer transition-colors"
+                                  >
+                                    No
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmDeleteProjId(proj.id)}
+                                  className="px-2.5 py-1 text-xs font-semibold text-rose-600 bg-rose-50/50 hover:bg-rose-50 border border-rose-100 rounded-lg transition-all cursor-pointer inline-flex items-center gap-1"
+                                >
+                                  <Trash className="w-3.5 h-3.5" /> Delete
+                                </button>
+                              )}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -740,7 +836,8 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
           )}
 
           {subTab === "certs" && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="space-y-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <form onSubmit={handleIssueCertificate} className="space-y-5">
                 <h3 className="font-sans font-bold text-slate-900 text-lg border-b border-slate-100 pb-2">Issue Certified Award</h3>
                 
@@ -817,7 +914,81 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                 </p>
               </div>
             </div>
-          )}
+
+            {/* Previously Issued Certificates List */}
+            <div className="mt-8 border-t border-slate-100 pt-8 space-y-4">
+              <h3 className="font-sans font-bold text-slate-900 text-lg">Active Issued Awards & Badges ({certificates.length})</h3>
+              {certificates.length === 0 ? (
+                <div className="text-center py-8 text-slate-400 text-xs border border-dashed border-slate-200 rounded-xl">
+                  No awards or badges have been issued yet. Use the form above to grant the first certified badge!
+                </div>
+              ) : (
+                <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                  <table className="min-w-full divide-y divide-slate-200 text-xs text-left">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Recipient</th>
+                        <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Project / Team</th>
+                        <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Designation</th>
+                        <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Verification Code</th>
+                        <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-slate-200 font-medium text-slate-700">
+                      {certificates.map((cert) => (
+                        <tr key={cert.id} className="hover:bg-slate-50/50">
+                          <td className="px-4 py-3">
+                            <div className="font-bold text-slate-900">{cert.recipientName}</div>
+                            <div className="text-[10px] text-slate-400">{cert.recipientEmail}</div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="text-slate-800 font-semibold">{cert.projectName}</div>
+                            <div className="text-[10px] text-slate-500">Team: {cert.teamName}</div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100 text-[10px] font-bold">
+                              {cert.role}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 font-mono text-[10px] text-slate-500">{cert.certificateCode}</td>
+                          <td className="px-4 py-3 text-right">
+                            {confirmDeleteCertId === cert.id ? (
+                              <div className="inline-flex items-center gap-1.5 bg-rose-50 border border-rose-200 rounded-md p-1">
+                                <span className="text-[9px] text-rose-700 font-bold px-1">Revoke?</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteCertificate(cert.id)}
+                                  className="px-1.5 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[9px] font-bold cursor-pointer transition-colors"
+                                >
+                                  Yes
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmDeleteCertId(null)}
+                                  className="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-[9px] font-bold cursor-pointer transition-colors"
+                                >
+                                  No
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDeleteCertId(cert.id)}
+                                className="text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-2 py-1 rounded transition-all font-semibold inline-flex items-center gap-0.5 cursor-pointer"
+                              >
+                                <Trash className="w-3.5 h-3.5" /> Revoke
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
           {subTab === "events" && (
             selectedHk ? (
@@ -1027,25 +1198,52 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                           <p className="text-[10px] text-slate-400 font-mono">Dates: {hk.startDate} to {hk.endDate}</p>
                         </div>
 
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => setSelectedHk(hk)}
-                            className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
-                          >
-                            <FolderGit className="w-3.5 h-3.5" />
-                            Open
-                          </button>
-                          <button
-                            onClick={() => handleToggleHackathonActive(hk.id, hk.active)}
-                            className={`p-2 rounded-lg border text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors ${
-                              hk.active 
-                                ? "bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100" 
-                                : "bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
-                            }`}
-                          >
-                            <Power className="w-3.5 h-3.5" />
-                            {hk.active ? "Deactivate" : "Activate"}
-                          </button>
+                        <div className="flex flex-col items-end gap-2 shrink-0">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => setSelectedHk(hk)}
+                              className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
+                            >
+                              <FolderGit className="w-3.5 h-3.5" />
+                              Open
+                            </button>
+                            <button
+                              onClick={() => handleToggleHackathonActive(hk.id, hk.active)}
+                              className={`p-2 rounded-lg border text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors ${
+                                hk.active 
+                                  ? "bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100" 
+                                  : "bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100"
+                              }`}
+                            >
+                              <Power className="w-3.5 h-3.5" />
+                              {hk.active ? "Deactivate" : "Activate"}
+                            </button>
+                          </div>
+
+                          {confirmDeleteHkId === hk.id ? (
+                            <div className="flex items-center gap-1.5 bg-rose-50 border border-rose-200 rounded-lg p-1 mt-1">
+                              <span className="text-[10px] text-rose-700 font-bold px-1">Confirm delete?</span>
+                              <button
+                                onClick={() => handleDeleteHackathon(hk.id)}
+                                className="px-2 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[10px] font-bold cursor-pointer transition-colors"
+                              >
+                                Yes
+                              </button>
+                              <button
+                                onClick={() => setConfirmDeleteHkId(null)}
+                                className="px-2 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-[10px] font-bold cursor-pointer transition-colors"
+                              >
+                                No
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setConfirmDeleteHkId(hk.id)}
+                              className="text-[11px] font-bold text-rose-600 hover:text-rose-800 hover:underline flex items-center gap-1 cursor-pointer"
+                            >
+                              <Trash className="w-3 h-3" /> Delete Event
+                            </button>
+                          )}
                         </div>
                       </div>
                     ))}

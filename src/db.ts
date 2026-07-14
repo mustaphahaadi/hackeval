@@ -536,6 +536,49 @@ class LocalDB {
     return newCert;
   }
 
+  // DELETE OPERATIONS FOR ADMINISTRATIVE CONTROL
+  deleteHackathon(id: string): boolean {
+    const initialLength = this.state.hackathons.length;
+    this.state.hackathons = this.state.hackathons.filter(h => h.id !== id);
+    if (this.state.hackathons.length === initialLength) return false;
+
+    // Cascade deletion of projects and all dependent models
+    const projectsToDelete = this.state.projects.filter(p => p.hackathonId === id).map(p => p.id);
+    this.state.projects = this.state.projects.filter(p => p.hackathonId !== id);
+    this.state.githubAnalyses = this.state.githubAnalyses.filter(g => !projectsToDelete.includes(g.projectId));
+    this.state.aiEvaluations = this.state.aiEvaluations.filter(e => !projectsToDelete.includes(e.projectId));
+    this.state.judgeReviews = this.state.judgeReviews.filter(r => !projectsToDelete.includes(r.projectId));
+    this.state.comments = this.state.comments.filter(c => !projectsToDelete.includes(c.projectId));
+    this.state.certificates = this.state.certificates.filter(c => !projectsToDelete.includes(c.projectId));
+
+    this.save();
+    return true;
+  }
+
+  deleteProject(id: string): boolean {
+    const initialLength = this.state.projects.length;
+    this.state.projects = this.state.projects.filter(p => p.id !== id);
+    if (this.state.projects.length === initialLength) return false;
+
+    // Cascade deletion of all dependent project models
+    this.state.githubAnalyses = this.state.githubAnalyses.filter(g => g.projectId !== id);
+    this.state.aiEvaluations = this.state.aiEvaluations.filter(e => e.projectId !== id);
+    this.state.judgeReviews = this.state.judgeReviews.filter(r => r.projectId !== id);
+    this.state.comments = this.state.comments.filter(c => c.projectId !== id);
+    this.state.certificates = this.state.certificates.filter(c => c.projectId !== id);
+
+    this.save();
+    return true;
+  }
+
+  deleteCertificate(id: string): boolean {
+    const initialLength = this.state.certificates.length;
+    this.state.certificates = this.state.certificates.filter(c => c.id !== id);
+    if (this.state.certificates.length === initialLength) return false;
+    this.save();
+    return true;
+  }
+
   // LEADERBOARD CALCULATOR
   getLeaderboard(hackathonId?: string): LeaderboardRanking[] {
     let filteredProjects = this.state.projects;
