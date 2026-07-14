@@ -23,9 +23,27 @@ import {
 let dbFirestore: any = null;
 
 try {
-  const configPath = path.join(process.cwd(), "firebase-applet-config.json");
-  if (fs.existsSync(configPath)) {
-    const firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+  let firebaseConfig: any = null;
+  const pathsToSearch = [
+    path.join(process.cwd(), "firebase-applet-config.json"),
+    path.join(__dirname, "../firebase-applet-config.json"),
+    path.join(__dirname, "firebase-applet-config.json"),
+    path.join(process.cwd(), "dist", "firebase-applet-config.json")
+  ];
+
+  for (const p of pathsToSearch) {
+    if (fs.existsSync(p)) {
+      try {
+        firebaseConfig = JSON.parse(fs.readFileSync(p, "utf-8"));
+        console.log(`Successfully loaded Firebase config from ${p}`);
+        break;
+      } catch (e) {
+        console.error(`Found config at ${p} but failed to parse:`, e);
+      }
+    }
+  }
+
+  if (firebaseConfig) {
     const firebaseApp = initializeApp({
       apiKey: firebaseConfig.apiKey,
       authDomain: firebaseConfig.authDomain,
@@ -37,7 +55,7 @@ try {
     dbFirestore = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId || "(default)");
     console.log("Firebase initialized successfully on backend server.");
   } else {
-    console.warn("firebase-applet-config.json not found, falling back to local file DB");
+    console.warn("firebase-applet-config.json not found, falling back to local memory DB");
   }
 } catch (err) {
   console.error("Failed to initialize Firebase:", err);
@@ -175,14 +193,24 @@ class LocalDB {
   private init() {
     try {
       if (!fs.existsSync(DB_DIR)) {
-        fs.mkdirSync(DB_DIR, { recursive: true });
+        try {
+          fs.mkdirSync(DB_DIR, { recursive: true });
+        } catch (dirErr) {
+          console.warn("Read-only filesystem: unable to create data directory, using in-memory database:", dirErr);
+        }
       }
 
       if (fs.existsSync(DB_FILE)) {
-        const fileContent = fs.readFileSync(DB_FILE, "utf-8");
-        this.state = JSON.parse(fileContent);
-        // Quick verify arrays exist
-        this.ensureArrays();
+        try {
+          const fileContent = fs.readFileSync(DB_FILE, "utf-8");
+          this.state = JSON.parse(fileContent);
+          // Quick verify arrays exist
+          this.ensureArrays();
+        } catch (readErr) {
+          console.error("Failed to read database file, resetting to default:", readErr);
+          this.state = DEFAULT_STATE();
+          this.seed();
+        }
       } else {
         this.state = DEFAULT_STATE();
         this.seed();
@@ -212,7 +240,7 @@ class LocalDB {
     try {
       fs.writeFileSync(DB_FILE, JSON.stringify(this.state, null, 2), "utf-8");
     } catch (err) {
-      console.error("Failed to write to database file:", err);
+      console.warn("Failed to write to local database file (system is likely read-only / serverless):", err);
     }
   }
 
