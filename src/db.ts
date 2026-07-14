@@ -3,7 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import bcrypt from "bcryptjs";
 import { initializeApp } from "firebase/app";
-import { getFirestore, doc, setDoc, deleteDoc, getDocs, collection } from "firebase/firestore";
+import { initializeFirestore, doc, setDoc, deleteDoc, getDocs, collection } from "firebase/firestore";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -56,7 +56,9 @@ try {
       messagingSenderId: firebaseConfig.messagingSenderId,
       appId: firebaseConfig.appId,
     });
-    dbFirestore = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId || "(default)");
+    dbFirestore = initializeFirestore(firebaseApp, {
+      experimentalForceLongPolling: true,
+    }, firebaseConfig.firestoreDatabaseId || "(default)");
     console.log("Firebase initialized successfully on backend server.");
   } else {
     console.warn("firebase-applet-config.json not found, falling back to local memory DB");
