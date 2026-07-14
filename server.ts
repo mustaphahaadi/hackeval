@@ -19,6 +19,14 @@ const PORT = 3000;
 app.use(express.json());
 
 // Database initialization runs in the background inside db.ts constructor
+app.use(async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await db.ensureInitialized();
+  } catch (error: any) {
+    console.error("Database initialization warning:", error.message);
+  }
+  next();
+});
 
 // Initialize Gemini Client
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -112,7 +120,7 @@ const authorizeRoles = (...roles: UserRole[]) => {
 // --- AUTH API ---
 
 // Register
-app.post("/api/auth/register", (req: Request, res: Response) => {
+app.post("/api/auth/register", async (req: Request, res: Response) => {
   try {
     const { email, password, name, role } = req.body;
     if (!email || !password || !name) {
@@ -131,7 +139,7 @@ app.post("/api/auth/register", (req: Request, res: Response) => {
 
     const userRole: UserRole = (role === "Admin" || role === "Judge") ? role : "Participant";
 
-    const newUser = db.createUser({
+    const newUser = await db.createUser({
       email: email.toLowerCase(),
       passwordHash,
       name,
@@ -246,7 +254,7 @@ app.get("/api/projects/:id", optionalAuthenticateToken, (req: AuthRequest, res: 
 });
 
 // POST /projects
-app.post("/api/projects", optionalAuthenticateToken, (req: AuthRequest, res: Response) => {
+app.post("/api/projects", optionalAuthenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const {
       projectName,
@@ -282,7 +290,7 @@ app.post("/api/projects", optionalAuthenticateToken, (req: AuthRequest, res: Res
       return;
     }
 
-    const newProject = db.createProject({
+    const newProject = await db.createProject({
       projectName,
       teamName,
       teamMembers: teamMembers || req.user?.name || "",
@@ -304,7 +312,7 @@ app.post("/api/projects", optionalAuthenticateToken, (req: AuthRequest, res: Res
 });
 
 // UPDATE /projects/{id}
-app.put("/api/projects/:id", authenticateToken, (req: AuthRequest, res: Response) => {
+app.put("/api/projects/:id", authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const project = db.getProjects().find(p => p.id === req.params.id);
     if (!project) {
@@ -318,7 +326,7 @@ app.put("/api/projects/:id", authenticateToken, (req: AuthRequest, res: Response
       return;
     }
 
-    const updated = db.updateProject(req.params.id, req.body);
+    const updated = await db.updateProject(req.params.id, req.body);
     res.json(updated);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -326,9 +334,9 @@ app.put("/api/projects/:id", authenticateToken, (req: AuthRequest, res: Response
 });
 
 // DELETE /projects/{id}
-app.delete("/api/projects/:id", authenticateToken, authorizeRoles("Admin"), (req: AuthRequest, res: Response) => {
+app.delete("/api/projects/:id", authenticateToken, authorizeRoles("Admin"), async (req: AuthRequest, res: Response) => {
   try {
-    const success = db.deleteProject(req.params.id);
+    const success = await db.deleteProject(req.params.id);
     if (!success) {
       res.status(404).json({ error: "Project submission not found." });
       return;
@@ -873,13 +881,13 @@ async function executeAIEvaluation(projectId: string): Promise<any> {
   }
 
   if (analysisResult) {
-    githubData = db.upsertGitHubAnalysis({
+    githubData = await db.upsertGitHubAnalysis({
       projectId,
       ...analysisResult
     });
   } else if (!githubData) {
     // Create a default fallback analysis so Gemini has structure to evaluate
-    githubData = db.upsertGitHubAnalysis({
+    githubData = await db.upsertGitHubAnalysis({
       projectId,
       stars: 2,
       forks: 0,
@@ -1149,7 +1157,7 @@ ${evalResults.weaknesses.map((w: string) => `• ${w}`).join("\n")}
 ${evalResults.recommendations.map((r: string) => `• ${r}`).join("\n")}
 `.trim();
 
-      return db.upsertAIEvaluation({
+      return await db.upsertAIEvaluation({
         projectId,
         ideaScore,
         innovationScore,
@@ -1238,7 +1246,7 @@ ${fallbackResults.weaknesses.map((w: string) => `• ${w}`).join("\n")}
 ${fallbackResults.recommendations.map((r: string) => `• ${r}`).join("\n")}
 `.trim();
 
-  return db.upsertAIEvaluation({
+  return await db.upsertAIEvaluation({
     projectId,
     ideaScore: fallbackResults.business_impact.score * 10,
     innovationScore: fallbackResults.innovation.score * 10,
@@ -1285,7 +1293,7 @@ app.post("/api/evaluate-all", optionalAuthenticateToken, async (req: Request, re
 // --- JUDGE EVALUATION / REVIEWS ---
 
 // POST /api/reviews
-app.post("/api/reviews", authenticateToken, authorizeRoles("Admin"), (req: AuthRequest, res: Response) => {
+app.post("/api/reviews", authenticateToken, authorizeRoles("Admin"), async (req: AuthRequest, res: Response) => {
   try {
     const { projectId, scores, feedback } = req.body;
     if (!projectId || !scores || !feedback) {
@@ -1303,7 +1311,7 @@ app.post("/api/reviews", authenticateToken, authorizeRoles("Admin"), (req: AuthR
     const s = scores;
     const overall = Number(((s.idea + s.innovation + s.codeQuality + s.readme + s.ui + s.aiUsage + s.technical) / 7).toFixed(1));
 
-    const newReview = db.addJudgeReview({
+    const newReview = await db.addJudgeReview({
       projectId,
       judgeId: req.user!.id,
       judgeName: req.user!.name,
@@ -1344,7 +1352,7 @@ app.get("/api/leaderboard", (req: Request, res: Response) => {
 // --- COMMENTS ---
 
 // POST /api/comments
-app.post("/api/comments", optionalAuthenticateToken, (req: AuthRequest, res: Response) => {
+app.post("/api/comments", optionalAuthenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { projectId, content } = req.body;
     if (!projectId || !content) {
@@ -1352,7 +1360,7 @@ app.post("/api/comments", optionalAuthenticateToken, (req: AuthRequest, res: Res
       return;
     }
 
-    const comment = db.addComment({
+    const comment = await db.addComment({
       projectId,
       content,
       userId: req.user?.id || "guest_" + Math.random().toString(36).substring(2, 9),
@@ -1516,7 +1524,7 @@ app.get("/api/admin/users", authenticateToken, authorizeRoles("Admin"), (req: Re
 });
 
 // PUT /api/admin/users/:id/role
-app.put("/api/admin/users/:id/role", authenticateToken, authorizeRoles("Admin"), (req: Request, res: Response) => {
+app.put("/api/admin/users/:id/role", authenticateToken, authorizeRoles("Admin"), async (req: Request, res: Response) => {
   try {
     const { role } = req.body;
     if (role !== "Admin" && role !== "Judge" && role !== "Participant") {
@@ -1524,7 +1532,7 @@ app.put("/api/admin/users/:id/role", authenticateToken, authorizeRoles("Admin"),
       return;
     }
 
-    const updated = db.updateUserRole(req.params.id, role);
+    const updated = await db.updateUserRole(req.params.id, role);
     if (!updated) {
       res.status(404).json({ error: "User profile was not found." });
       return;
@@ -1542,7 +1550,7 @@ app.put("/api/admin/users/:id/role", authenticateToken, authorizeRoles("Admin"),
 });
 
 // POST /api/admin/certificates
-app.post("/api/admin/certificates", authenticateToken, authorizeRoles("Admin"), (req: Request, res: Response) => {
+app.post("/api/admin/certificates", authenticateToken, authorizeRoles("Admin"), async (req: Request, res: Response) => {
   try {
     const { projectId, recipientEmail, recipientName, role } = req.body;
     if (!projectId || !recipientEmail || !recipientName || !role) {
@@ -1556,7 +1564,7 @@ app.post("/api/admin/certificates", authenticateToken, authorizeRoles("Admin"), 
       return;
     }
 
-    const cert = db.issueCertificate({
+    const cert = await db.issueCertificate({
       projectId,
       projectName: proj.projectName,
       teamName: proj.teamName,
@@ -1591,9 +1599,9 @@ app.get("/api/certificates", optionalAuthenticateToken, (req: AuthRequest, res: 
 });
 
 // DELETE /api/certificates/:id
-app.delete("/api/certificates/:id", authenticateToken, authorizeRoles("Admin"), (req: Request, res: Response) => {
+app.delete("/api/certificates/:id", authenticateToken, authorizeRoles("Admin"), async (req: Request, res: Response) => {
   try {
-    const success = db.deleteCertificate(req.params.id);
+    const success = await db.deleteCertificate(req.params.id);
     if (!success) {
       res.status(404).json({ error: "Certificate was not found." });
       return;
@@ -1764,7 +1772,7 @@ app.post("/api/analyze-website", authenticateToken, async (req: Request, res: Re
       analyzedAt: new Date().toISOString()
     };
 
-    db.saveLiveAnalysis(analysisResult);
+    await db.saveLiveAnalysis(analysisResult);
     res.json(analysisResult);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -1777,7 +1785,7 @@ app.get("/api/hackathons", (req: Request, res: Response) => {
   res.json(db.getHackathons());
 });
 
-app.post("/api/hackathons", optionalAuthenticateToken, (req: Request, res: Response) => {
+app.post("/api/hackathons", optionalAuthenticateToken, async (req: Request, res: Response) => {
   try {
     const { name, description, startDate, endDate, active } = req.body;
     if (!name || !description || !startDate || !endDate) {
@@ -1785,7 +1793,7 @@ app.post("/api/hackathons", optionalAuthenticateToken, (req: Request, res: Respo
       return;
     }
 
-    const newHk = db.createHackathon({
+    const newHk = await db.createHackathon({
       name,
       description,
       startDate,
@@ -1798,9 +1806,9 @@ app.post("/api/hackathons", optionalAuthenticateToken, (req: Request, res: Respo
   }
 });
 
-app.put("/api/hackathons/:id", authenticateToken, authorizeRoles("Admin"), (req: Request, res: Response) => {
+app.put("/api/hackathons/:id", authenticateToken, authorizeRoles("Admin"), async (req: Request, res: Response) => {
   try {
-    const updated = db.updateHackathon(req.params.id, req.body);
+    const updated = await db.updateHackathon(req.params.id, req.body);
     if (!updated) {
       res.status(404).json({ error: "Hackathon event was not found." });
       return;
@@ -1812,9 +1820,9 @@ app.put("/api/hackathons/:id", authenticateToken, authorizeRoles("Admin"), (req:
 });
 
 // DELETE /api/hackathons/:id
-app.delete("/api/hackathons/:id", authenticateToken, authorizeRoles("Admin"), (req: Request, res: Response) => {
+app.delete("/api/hackathons/:id", authenticateToken, authorizeRoles("Admin"), async (req: Request, res: Response) => {
   try {
-    const success = db.deleteHackathon(req.params.id);
+    const success = await db.deleteHackathon(req.params.id);
     if (!success) {
       res.status(404).json({ error: "Hackathon event was not found." });
       return;

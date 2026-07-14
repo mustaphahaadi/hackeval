@@ -209,6 +209,32 @@ class LocalDB {
     }
   }
 
+  private async persistItem(colName: keyof DBState, docId: string, item: any) {
+    if (!dbFirestore) {
+      this.save();
+      return;
+    }
+    try {
+      await withTimeout(setDoc(doc(dbFirestore, colName, docId), item), 3000, `persistItem ${colName}/${docId}`);
+    } catch (err) {
+      console.error(`Failed to persist item ${colName}/${docId} to Firestore:`, err);
+      this.save();
+    }
+  }
+
+  private async deleteItem(colName: keyof DBState, docId: string) {
+    if (!dbFirestore) {
+      this.save();
+      return;
+    }
+    try {
+      await withTimeout(deleteDoc(doc(dbFirestore, colName, docId)), 3000, `deleteItem ${colName}/${docId}`);
+    } catch (err) {
+      console.error(`Failed to delete item ${colName}/${docId} from Firestore:`, err);
+      this.save();
+    }
+  }
+
   private init() {
     try {
       if (!fs.existsSync(DB_DIR)) {
@@ -504,7 +530,7 @@ class LocalDB {
   getCertificates() { return this.state.certificates; }
   getLiveAnalyses() { return this.state.liveAnalyses || []; }
 
-  saveLiveAnalysis(analysis: LiveAnalysisResult): LiveAnalysisResult {
+  async saveLiveAnalysis(analysis: LiveAnalysisResult): Promise<LiveAnalysisResult> {
     if (!this.state.liveAnalyses) {
       this.state.liveAnalyses = [];
     }
@@ -513,14 +539,14 @@ class LocalDB {
       this.state.liveAnalyses = this.state.liveAnalyses.slice(0, 50);
     }
     this.save();
-    this.persistCollection("liveAnalyses");
+    await this.persistItem("liveAnalyses", (analysis as any).id || (analysis as any).url || "default", analysis);
     return analysis;
   }
 
   // --- CRUD METHODS ---
 
   // USERS
-  createUser(user: Omit<User, "id" | "createdAt">): User {
+  async createUser(user: Omit<User, "id" | "createdAt">): Promise<User> {
     const newUser: User = {
       ...user,
       id: "usr_" + Math.random().toString(36).substr(2, 9),
@@ -528,49 +554,54 @@ class LocalDB {
     };
     this.state.users.push(newUser);
     this.save();
-    this.persistCollection("users");
+    await this.persistItem("users", newUser.id, newUser);
     return newUser;
   }
 
-  updateUserRole(userId: string, role: UserRole): User | null {
+  async updateUserRole(userId: string, role: UserRole): Promise<User | null> {
     const user = this.state.users.find(u => u.id === userId);
     if (!user) return null;
     user.role = role;
     this.save();
-    this.persistCollection("users");
+    await this.persistItem("users", user.id, user);
     return user;
   }
 
   // HACKATHONS
-  createHackathon(hk: Omit<HackathonEvent, "id">): HackathonEvent {
+  async createHackathon(hk: Omit<HackathonEvent, "id">): Promise<HackathonEvent> {
     const newHk: HackathonEvent = {
       ...hk,
       id: "hk_" + Math.random().toString(36).substr(2, 9)
     };
     this.state.hackathons.push(newHk);
     this.save();
-    this.persistCollection("hackathons");
+    await this.persistItem("hackathons", newHk.id, newHk);
     return newHk;
   }
 
-  updateHackathon(id: string, updates: Partial<HackathonEvent>): HackathonEvent | null {
+  async updateHackathon(id: string, updates: Partial<HackathonEvent>): Promise<HackathonEvent | null> {
     const index = this.state.hackathons.findIndex(h => h.id === id);
     if (index === -1) return null;
     
     // If active is set to true, set all other hackathons active to false
     if (updates.active) {
-      this.state.hackathons.forEach(h => h.active = false);
+      for (const h of this.state.hackathons) {
+        if (h.id !== id && h.active) {
+          h.active = false;
+          await this.persistItem("hackathons", h.id, h);
+        }
+      }
     }
 
     const updated = { ...this.state.hackathons[index], ...updates };
     this.state.hackathons[index] = updated;
     this.save();
-    this.persistCollection("hackathons");
+    await this.persistItem("hackathons", updated.id, updated);
     return updated;
   }
 
   // TEAMS
-  createTeam(team: Omit<Team, "id" | "createdAt">): Team {
+  async createTeam(team: Omit<Team, "id" | "createdAt">): Promise<Team> {
     const newTeam: Team = {
       ...team,
       id: "team_" + Math.random().toString(36).substr(2, 9),
@@ -578,24 +609,24 @@ class LocalDB {
     };
     this.state.teams.push(newTeam);
     this.save();
-    this.persistCollection("teams");
+    await this.persistItem("teams", newTeam.id, newTeam);
     return newTeam;
   }
 
   // PARTICIPANTS
-  createParticipant(part: Omit<Participant, "id">): Participant {
+  async createParticipant(part: Omit<Participant, "id">): Promise<Participant> {
     const newPart: Participant = {
       ...part,
       id: "part_" + Math.random().toString(36).substr(2, 9)
     };
     this.state.participants.push(newPart);
     this.save();
-    this.persistCollection("participants");
+    await this.persistItem("participants", newPart.id, newPart);
     return newPart;
   }
 
   // PROJECTS
-  createProject(proj: Omit<ProjectSubmission, "id" | "createdAt" | "status">): ProjectSubmission {
+  async createProject(proj: Omit<ProjectSubmission, "id" | "createdAt" | "status">): Promise<ProjectSubmission> {
     const newProj: ProjectSubmission = {
       ...proj,
       id: "proj_" + Math.random().toString(36).substr(2, 9),
@@ -604,22 +635,22 @@ class LocalDB {
     };
     this.state.projects.push(newProj);
     this.save();
-    this.persistCollection("projects");
+    await this.persistItem("projects", newProj.id, newProj);
     return newProj;
   }
 
-  updateProject(id: string, updates: Partial<ProjectSubmission>): ProjectSubmission | null {
+  async updateProject(id: string, updates: Partial<ProjectSubmission>): Promise<ProjectSubmission | null> {
     const index = this.state.projects.findIndex(p => p.id === id);
     if (index === -1) return null;
     const updated = { ...this.state.projects[index], ...updates };
     this.state.projects[index] = updated;
     this.save();
-    this.persistCollection("projects");
+    await this.persistItem("projects", updated.id, updated);
     return updated;
   }
 
   // GITHUB ANALYSIS
-  upsertGitHubAnalysis(analysis: Omit<GitHubAnalysis, "id" | "analyzedAt">): GitHubAnalysis {
+  async upsertGitHubAnalysis(analysis: Omit<GitHubAnalysis, "id" | "analyzedAt">): Promise<GitHubAnalysis> {
     const existingIndex = this.state.githubAnalyses.findIndex(g => g.projectId === analysis.projectId);
     const item: GitHubAnalysis = {
       ...analysis,
@@ -633,12 +664,12 @@ class LocalDB {
       this.state.githubAnalyses.push(item);
     }
     this.save();
-    this.persistCollection("githubAnalyses");
+    await this.persistItem("githubAnalyses", item.id, item);
     return item;
   }
 
   // AI EVALUATIONS
-  upsertAIEvaluation(evalu: Omit<AIEvaluation, "id" | "evaluatedAt">): AIEvaluation {
+  async upsertAIEvaluation(evalu: Omit<AIEvaluation, "id" | "evaluatedAt">): Promise<AIEvaluation> {
     const existingIndex = this.state.aiEvaluations.findIndex(e => e.projectId === evalu.projectId);
     const item: AIEvaluation = {
       ...evalu,
@@ -659,13 +690,15 @@ class LocalDB {
     }
 
     this.save();
-    this.persistCollection("aiEvaluations");
-    this.persistCollection("projects");
+    await this.persistItem("aiEvaluations", item.id, item);
+    if (projIndex !== -1) {
+      await this.persistItem("projects", this.state.projects[projIndex].id, this.state.projects[projIndex]);
+    }
     return item;
   }
 
   // JUDGE REVIEWS
-  addJudgeReview(review: Omit<JudgeReview, "id" | "submittedAt">): JudgeReview {
+  async addJudgeReview(review: Omit<JudgeReview, "id" | "submittedAt">): Promise<JudgeReview> {
     const newReview: JudgeReview = {
       ...review,
       id: "jr_" + Math.random().toString(36).substr(2, 9),
@@ -681,12 +714,12 @@ class LocalDB {
       this.state.judgeReviews.push(newReview);
     }
     this.save();
-    this.persistCollection("judgeReviews");
+    await this.persistItem("judgeReviews", newReview.id, newReview);
     return newReview;
   }
 
   // COMMENTS
-  addComment(comment: Omit<Comment, "id" | "createdAt">): Comment {
+  async addComment(comment: Omit<Comment, "id" | "createdAt">): Promise<Comment> {
     const newComment: Comment = {
       ...comment,
       id: "comm_" + Math.random().toString(36).substr(2, 9),
@@ -694,12 +727,12 @@ class LocalDB {
     };
     this.state.comments.push(newComment);
     this.save();
-    this.persistCollection("comments");
+    await this.persistItem("comments", newComment.id, newComment);
     return newComment;
   }
 
   // CERTIFICATES
-  issueCertificate(cert: Omit<Certificate, "id" | "issuedAt" | "certificateCode">): Certificate {
+  async issueCertificate(cert: Omit<Certificate, "id" | "issuedAt" | "certificateCode">): Promise<Certificate> {
     const certificateCode = "CERT-" + Math.floor(100000 + Math.random() * 900000);
     const newCert: Certificate = {
       ...cert,
@@ -709,12 +742,12 @@ class LocalDB {
     };
     this.state.certificates.push(newCert);
     this.save();
-    this.persistCollection("certificates");
+    await this.persistItem("certificates", newCert.id, newCert);
     return newCert;
   }
 
   // DELETE OPERATIONS FOR ADMINISTRATIVE CONTROL
-  deleteHackathon(id: string): boolean {
+  async deleteHackathon(id: string): Promise<boolean> {
     const initialLength = this.state.hackathons.length;
     this.state.hackathons = this.state.hackathons.filter(h => h.id !== id);
     if (this.state.hackathons.length === initialLength) return false;
@@ -722,51 +755,94 @@ class LocalDB {
     // Cascade deletion of projects and all dependent models
     const projectsToDelete = this.state.projects.filter(p => p.hackathonId === id).map(p => p.id);
     this.state.projects = this.state.projects.filter(p => p.hackathonId !== id);
+    
+    const githubAnalysesToDelete = this.state.githubAnalyses.filter(g => projectsToDelete.includes(g.projectId));
     this.state.githubAnalyses = this.state.githubAnalyses.filter(g => !projectsToDelete.includes(g.projectId));
+    
+    const aiEvaluationsToDelete = this.state.aiEvaluations.filter(e => projectsToDelete.includes(e.projectId));
     this.state.aiEvaluations = this.state.aiEvaluations.filter(e => !projectsToDelete.includes(e.projectId));
+    
+    const judgeReviewsToDelete = this.state.judgeReviews.filter(r => projectsToDelete.includes(r.projectId));
     this.state.judgeReviews = this.state.judgeReviews.filter(r => !projectsToDelete.includes(r.projectId));
+    
+    const commentsToDelete = this.state.comments.filter(c => projectsToDelete.includes(c.projectId));
     this.state.comments = this.state.comments.filter(c => !projectsToDelete.includes(c.projectId));
+    
+    const certificatesToDelete = this.state.certificates.filter(c => projectsToDelete.includes(c.projectId));
     this.state.certificates = this.state.certificates.filter(c => !projectsToDelete.includes(c.projectId));
 
     this.save();
-    this.persistCollection("hackathons");
-    this.persistCollection("projects");
-    this.persistCollection("githubAnalyses");
-    this.persistCollection("aiEvaluations");
-    this.persistCollection("judgeReviews");
-    this.persistCollection("comments");
-    this.persistCollection("certificates");
+
+    await this.deleteItem("hackathons", id);
+    for (const pId of projectsToDelete) {
+      await this.deleteItem("projects", pId);
+    }
+    for (const g of githubAnalysesToDelete) {
+      await this.deleteItem("githubAnalyses", g.id);
+    }
+    for (const e of aiEvaluationsToDelete) {
+      await this.deleteItem("aiEvaluations", e.id);
+    }
+    for (const r of judgeReviewsToDelete) {
+      await this.deleteItem("judgeReviews", r.id);
+    }
+    for (const c of commentsToDelete) {
+      await this.deleteItem("comments", c.id);
+    }
+    for (const c of certificatesToDelete) {
+      await this.deleteItem("certificates", c.id);
+    }
     return true;
   }
 
-  deleteProject(id: string): boolean {
+  async deleteProject(id: string): Promise<boolean> {
     const initialLength = this.state.projects.length;
     this.state.projects = this.state.projects.filter(p => p.id !== id);
     if (this.state.projects.length === initialLength) return false;
 
     // Cascade deletion of all dependent project models
+    const githubAnalysesToDelete = this.state.githubAnalyses.filter(g => g.projectId === id);
     this.state.githubAnalyses = this.state.githubAnalyses.filter(g => g.projectId !== id);
+    
+    const aiEvaluationsToDelete = this.state.aiEvaluations.filter(e => e.projectId === id);
     this.state.aiEvaluations = this.state.aiEvaluations.filter(e => e.projectId !== id);
+    
+    const judgeReviewsToDelete = this.state.judgeReviews.filter(r => r.projectId === id);
     this.state.judgeReviews = this.state.judgeReviews.filter(r => r.projectId !== id);
+    
+    const commentsToDelete = this.state.comments.filter(c => c.projectId === id);
     this.state.comments = this.state.comments.filter(c => c.projectId !== id);
+    
+    const certificatesToDelete = this.state.certificates.filter(c => c.projectId === id);
     this.state.certificates = this.state.certificates.filter(c => c.projectId !== id);
 
     this.save();
-    this.persistCollection("projects");
-    this.persistCollection("githubAnalyses");
-    this.persistCollection("aiEvaluations");
-    this.persistCollection("judgeReviews");
-    this.persistCollection("comments");
-    this.persistCollection("certificates");
+
+    await this.deleteItem("projects", id);
+    for (const g of githubAnalysesToDelete) {
+      await this.deleteItem("githubAnalyses", g.id);
+    }
+    for (const e of aiEvaluationsToDelete) {
+      await this.deleteItem("aiEvaluations", e.id);
+    }
+    for (const r of judgeReviewsToDelete) {
+      await this.deleteItem("judgeReviews", r.id);
+    }
+    for (const c of commentsToDelete) {
+      await this.deleteItem("comments", c.id);
+    }
+    for (const c of certificatesToDelete) {
+      await this.deleteItem("certificates", c.id);
+    }
     return true;
   }
 
-  deleteCertificate(id: string): boolean {
+  async deleteCertificate(id: string): Promise<boolean> {
     const initialLength = this.state.certificates.length;
     this.state.certificates = this.state.certificates.filter(c => c.id !== id);
     if (this.state.certificates.length === initialLength) return false;
     this.save();
-    this.persistCollection("certificates");
+    await this.deleteItem("certificates", id);
     return true;
   }
 
