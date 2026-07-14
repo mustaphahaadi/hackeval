@@ -1,6 +1,8 @@
 import fs from "fs";
 import path from "path";
 import bcrypt from "bcryptjs";
+import { initializeApp } from "firebase/app";
+import { getFirestore, doc, setDoc, deleteDoc, getDocs, collection } from "firebase/firestore";
 import {
   User,
   Team,
@@ -16,6 +18,30 @@ import {
   UserRole,
   LiveAnalysisResult
 } from "./types.js";
+
+// Initialize Firebase on backend
+let dbFirestore: any = null;
+
+try {
+  const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+  if (fs.existsSync(configPath)) {
+    const firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    const firebaseApp = initializeApp({
+      apiKey: firebaseConfig.apiKey,
+      authDomain: firebaseConfig.authDomain,
+      projectId: firebaseConfig.projectId,
+      storageBucket: firebaseConfig.storageBucket,
+      messagingSenderId: firebaseConfig.messagingSenderId,
+      appId: firebaseConfig.appId,
+    });
+    dbFirestore = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId || "(default)");
+    console.log("Firebase initialized successfully on backend server.");
+  } else {
+    console.warn("firebase-applet-config.json not found, falling back to local file DB");
+  }
+} catch (err) {
+  console.error("Failed to initialize Firebase:", err);
+}
 
 // Database storage location
 const DB_DIR = path.join(process.cwd(), "data");
@@ -52,9 +78,98 @@ const DEFAULT_STATE = (): DBState => ({
 
 class LocalDB {
   private state: DBState = DEFAULT_STATE();
+  private initPromise: Promise<void> | null = null;
+  private isInitialized = false;
 
   constructor() {
-    this.init();
+    this.init(); // Sync fallback init so we don't start with undefined/empty state before async completes
+    this.ensureInitialized().catch(err => {
+      console.error("Async Firebase initialization failed:", err);
+    });
+  }
+
+  ensureInitialized(): Promise<void> {
+    if (this.initPromise) return this.initPromise;
+    this.initPromise = this.initFirebase();
+    return this.initPromise;
+  }
+
+  private async initFirebase() {
+    if (!dbFirestore) {
+      console.warn("No dbFirestore instance. Operating purely on memory / local file.");
+      this.isInitialized = true;
+      return;
+    }
+
+    try {
+      console.log("Loading data from Firestore...");
+      const collectionsList = [
+        "users", "teams", "participants", "hackathons", "projects", 
+        "githubAnalyses", "aiEvaluations", "judgeReviews", "comments", "certificates", "liveAnalyses"
+      ];
+
+      // Check if users collection exists and has documents
+      const usersCol = collection(dbFirestore, "users");
+      const usersSnap = await getDocs(usersCol);
+
+      if (usersSnap.empty) {
+        console.log("Firestore is empty. Seeding Firestore with default data...");
+        this.seed(); // Seeds in-memory state
+        
+        // Batch upload seed data to Firestore to keep it fast
+        for (const colName of collectionsList) {
+          const items = this.state[colName as keyof DBState] || [];
+          for (const item of items) {
+            const docId = (item as any).id || (item as any).url || "default";
+            await setDoc(doc(dbFirestore, colName, docId), item);
+          }
+        }
+        console.log("Firestore seeding completed.");
+      } else {
+        // Load all collections from Firestore
+        for (const colName of collectionsList) {
+          const querySnapshot = await getDocs(collection(dbFirestore, colName));
+          const docs: any[] = [];
+          querySnapshot.forEach((d) => {
+            docs.push({ id: d.id, ...d.data() });
+          });
+          this.state[colName as keyof DBState] = docs;
+        }
+        console.log("Firestore data loaded successfully into memory.");
+      }
+      this.isInitialized = true;
+    } catch (error) {
+      console.error("Failed to initialize Firebase database, falling back to local file DB:", error);
+      this.isInitialized = true;
+    }
+  }
+
+  private async persistCollection(colName: keyof DBState) {
+    if (!dbFirestore) {
+      this.save();
+      return;
+    }
+    try {
+      const colRef = collection(dbFirestore, colName);
+      const querySnapshot = await getDocs(colRef);
+      const currentIds = new Set((this.state[colName] || []).map((item: any) => item.id || item.url || ""));
+
+      // Overwrite / write all current items
+      for (const item of (this.state[colName] || [])) {
+        const docId = (item as any).id || (item as any).url || "default";
+        await setDoc(doc(dbFirestore, colName, docId), item);
+      }
+
+      // Delete any items that are no longer present
+      for (const d of querySnapshot.docs) {
+        if (!currentIds.has(d.id)) {
+          await deleteDoc(doc(dbFirestore, colName, d.id));
+        }
+      }
+    } catch (err) {
+      console.error(`Failed to persist collection ${colName} to Firestore:`, err);
+      this.save();
+    }
   }
 
   private init() {
@@ -351,6 +466,7 @@ class LocalDB {
       this.state.liveAnalyses = this.state.liveAnalyses.slice(0, 50);
     }
     this.save();
+    this.persistCollection("liveAnalyses");
     return analysis;
   }
 
@@ -365,6 +481,7 @@ class LocalDB {
     };
     this.state.users.push(newUser);
     this.save();
+    this.persistCollection("users");
     return newUser;
   }
 
@@ -373,6 +490,7 @@ class LocalDB {
     if (!user) return null;
     user.role = role;
     this.save();
+    this.persistCollection("users");
     return user;
   }
 
@@ -384,6 +502,7 @@ class LocalDB {
     };
     this.state.hackathons.push(newHk);
     this.save();
+    this.persistCollection("hackathons");
     return newHk;
   }
 
@@ -399,6 +518,7 @@ class LocalDB {
     const updated = { ...this.state.hackathons[index], ...updates };
     this.state.hackathons[index] = updated;
     this.save();
+    this.persistCollection("hackathons");
     return updated;
   }
 
@@ -411,6 +531,7 @@ class LocalDB {
     };
     this.state.teams.push(newTeam);
     this.save();
+    this.persistCollection("teams");
     return newTeam;
   }
 
@@ -422,6 +543,7 @@ class LocalDB {
     };
     this.state.participants.push(newPart);
     this.save();
+    this.persistCollection("participants");
     return newPart;
   }
 
@@ -435,6 +557,7 @@ class LocalDB {
     };
     this.state.projects.push(newProj);
     this.save();
+    this.persistCollection("projects");
     return newProj;
   }
 
@@ -444,6 +567,7 @@ class LocalDB {
     const updated = { ...this.state.projects[index], ...updates };
     this.state.projects[index] = updated;
     this.save();
+    this.persistCollection("projects");
     return updated;
   }
 
@@ -462,6 +586,7 @@ class LocalDB {
       this.state.githubAnalyses.push(item);
     }
     this.save();
+    this.persistCollection("githubAnalyses");
     return item;
   }
 
@@ -487,6 +612,8 @@ class LocalDB {
     }
 
     this.save();
+    this.persistCollection("aiEvaluations");
+    this.persistCollection("projects");
     return item;
   }
 
@@ -507,6 +634,7 @@ class LocalDB {
       this.state.judgeReviews.push(newReview);
     }
     this.save();
+    this.persistCollection("judgeReviews");
     return newReview;
   }
 
@@ -519,6 +647,7 @@ class LocalDB {
     };
     this.state.comments.push(newComment);
     this.save();
+    this.persistCollection("comments");
     return newComment;
   }
 
@@ -533,6 +662,7 @@ class LocalDB {
     };
     this.state.certificates.push(newCert);
     this.save();
+    this.persistCollection("certificates");
     return newCert;
   }
 
@@ -552,6 +682,13 @@ class LocalDB {
     this.state.certificates = this.state.certificates.filter(c => !projectsToDelete.includes(c.projectId));
 
     this.save();
+    this.persistCollection("hackathons");
+    this.persistCollection("projects");
+    this.persistCollection("githubAnalyses");
+    this.persistCollection("aiEvaluations");
+    this.persistCollection("judgeReviews");
+    this.persistCollection("comments");
+    this.persistCollection("certificates");
     return true;
   }
 
@@ -568,6 +705,12 @@ class LocalDB {
     this.state.certificates = this.state.certificates.filter(c => c.projectId !== id);
 
     this.save();
+    this.persistCollection("projects");
+    this.persistCollection("githubAnalyses");
+    this.persistCollection("aiEvaluations");
+    this.persistCollection("judgeReviews");
+    this.persistCollection("comments");
+    this.persistCollection("certificates");
     return true;
   }
 
@@ -576,6 +719,7 @@ class LocalDB {
     this.state.certificates = this.state.certificates.filter(c => c.id !== id);
     if (this.state.certificates.length === initialLength) return false;
     this.save();
+    this.persistCollection("certificates");
     return true;
   }
 
