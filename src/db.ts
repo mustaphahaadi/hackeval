@@ -1,12 +1,9 @@
 import fs from "fs";
 import path from "path";
-import { fileURLToPath } from "url";
 import bcrypt from "bcryptjs";
 import { initializeApp } from "firebase/app";
 import { initializeFirestore, doc, setDoc, deleteDoc, getDocs, collection } from "firebase/firestore";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 import {
   User,
   Team,
@@ -30,8 +27,6 @@ try {
   let firebaseConfig: any = null;
   const pathsToSearch = [
     path.join(process.cwd(), "firebase-applet-config.json"),
-    path.join(__dirname, "../firebase-applet-config.json"),
-    path.join(__dirname, "firebase-applet-config.json"),
     path.join(process.cwd(), "dist", "firebase-applet-config.json")
   ];
 
