@@ -21,7 +21,7 @@ import {
   LeaderboardRanking,
   UserRole,
   LiveAnalysisResult
-} from "./types.js";
+} from "./types";
 
 // Initialize Firebase on backend
 let dbFirestore: any = null;

@@ -3,15 +3,14 @@ import path from "path";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { GoogleGenAI, Type } from "@google/genai";
-import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 
 // Load environment variables
 dotenv.config();
 
 // Initialize DB
-import { db } from "./src/db.js";
-import { UserRole, LiveAnalysisResult } from "./src/types.js";
+import { db } from "./src/db";
+import { UserRole, LiveAnalysisResult } from "./src/types";
 
 const app = express();
 const PORT = 3000;
@@ -1845,6 +1844,7 @@ app.delete("/api/hackathons/:id", authenticateToken, authorizeRoles("Admin"), (r
 const startServer = async () => {
   if (process.env.NODE_ENV !== "production") {
     // Mount Vite dev server middleware so Vite handles HMR & page rendering on Port 3000
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
