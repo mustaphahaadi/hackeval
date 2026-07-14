@@ -1,0 +1,449 @@
+{
+  "users": [
+    {
+      "id": "usr_admin",
+      "email": "admin@hackathon.edu",
+      "passwordHash": "$2b$10$C7cjiv/5s37IwxqH7heHSOvz8wkdc3fUhd3BGLMyWZk1CEnIkognG",
+      "name": "Professor Angela Sterling",
+      "role": "Admin",
+      "createdAt": "2026-07-14T19:29:06.298Z"
+    },
+    {
+      "id": "usr_part1",
+      "email": "alice@hackathon.edu",
+      "passwordHash": "$2b$10$C7cjiv/5s37IwxqH7heHSOkrsSfrD9UFbpSkqUC2R1vLmelZ0NQYa",
+      "name": "Alice Johnson",
+      "role": "Participant",
+      "createdAt": "2026-07-14T19:29:06.298Z"
+    },
+    {
+      "id": "usr_part2",
+      "email": "bob@hackathon.edu",
+      "passwordHash": "$2b$10$C7cjiv/5s37IwxqH7heHSOkrsSfrD9UFbpSkqUC2R1vLmelZ0NQYa",
+      "name": "Bob Smith",
+      "role": "Participant",
+      "createdAt": "2026-07-14T19:29:06.298Z"
+    },
+    {
+      "email": "test@test.com",
+      "passwordHash": "$2b$10$YK8Bh.L1loDBG6X.OEBeQuIwbD/VE7W1sVMC1N7JW6T/nCGn5Do96",
+      "name": "Test User",
+      "role": "Admin",
+      "id": "usr_t5jz6gk9n",
+      "createdAt": "2026-07-14T20:18:34.943Z"
+    }
+  ],
+  "teams": [
+    {
+      "id": "team_green_earth",
+      "name": "GreenEarth Developers",
+      "members": "Alice Johnson, Bob Smith, Sarah Connor",
+      "createdAt": "2026-07-14T19:29:06.298Z"
+    },
+    {
+      "id": "team_neural_learn",
+      "name": "NeuralLearn Systems",
+      "members": "David Miller, Frank Wright",
+      "createdAt": "2026-07-14T19:29:06.298Z"
+    }
+  ],
+  "participants": [
+    {
+      "id": "part_alice",
+      "userId": "usr_part1",
+      "teamId": "team_green_earth",
+      "college": "Stanford University",
+      "bio": "AI researcher interested in carbon credit modeling and full-stack web architectures."
+    },
+    {
+      "id": "part_bob",
+      "userId": "usr_part2",
+      "teamId": "team_green_earth",
+      "college": "UC Berkeley",
+      "bio": "Frontend engineer with a passion for beautiful, high-contrast, fully responsive UI dashboards."
+    }
+  ],
+  "hackathons": [
+    {
+      "id": "hk_global_ai",
+      "name": "Global AI & Web Innovation 2026",
+      "description": "A premium university-wide hackathon focusing on creating high-impact AI agents, web integrations, and decentralized software utilities designed for the real world.",
+      "startDate": "2026-07-10",
+      "endDate": "2026-07-15",
+      "active": true
+    },
+    {
+      "id": "hk_retro_games",
+      "name": "Retro Gaming Revival Hackathon",
+      "description": "Build visual retro canvas games using pure HTML5 Canvas and local state management with zero external server dependencies.",
+      "startDate": "2026-02-12",
+      "endDate": "2026-02-14",
+      "active": false
+    }
+  ],
+  "projects": [
+    {
+      "id": "proj_ecosphere",
+      "projectName": "EcoSphere: Intelligent Carbon Offset Router",
+      "teamName": "GreenEarth Developers",
+      "teamMembers": "Alice Johnson, Bob Smith, Sarah Connor",
+      "description": "EcoSphere is an intelligent carbon offset routing application. It maps local manufacturing metrics directly to certified carbon credits using machine learning. It features deep analytics of shipping routes, allowing companies to trace and systematically minimize their scope 3 emissions.",
+      "problemStatement": "Scope 3 shipping emissions are notoriously hard to measure and compensate for. Current corporate offset systems are slow, manual, and prone to greenwashing due to lack of public transparency.",
+      "githubUrl": "https://github.com/google/google-api-nodejs-client",
+      "aiStudioUrl": "https://ai.studio/build",
+      "liveUrl": "https://ecosphere.example.com",
+      "demoVideoUrl": "https://youtube.com/watch?v=dQw4w9WgXcQ",
+      "presentationDocName": "ecosphere_slide_deck.pdf",
+      "presentationDocUrl": "https://example.com/ecosphere_slide_deck.pdf",
+      "hackathonId": "hk_global_ai",
+      "createdAt": "2026-07-13T07:29:06.298Z",
+      "status": "evaluated"
+    },
+    {
+      "id": "proj_neural_learn",
+      "projectName": "EduPulse: AI Personal Tutor",
+      "teamName": "NeuralLearn Systems",
+      "teamMembers": "David Miller, Frank Wright",
+      "description": "EduPulse delivers real-time personalized quiz tracks, custom interactive worksheets, and synthetic audio flashcards using speech-to-text feedback loops. It adapts curriculum difficulty on the fly based on student stress/latency responses.",
+      "problemStatement": "Standard classrooms suffer from a single-speed teaching curriculum, leaving advanced students bored and struggling students left behind.",
+      "githubUrl": "https://github.com/expressjs/express",
+      "aiStudioUrl": "https://ai.studio/build",
+      "liveUrl": "https://edupulse-tutor.example.com",
+      "demoVideoUrl": "https://youtube.com/watch?v=dQw4w9WgXcQ",
+      "presentationDocName": "edupulse_v1.pptx",
+      "presentationDocUrl": "https://example.com/edupulse_v1.pptx",
+      "hackathonId": "hk_global_ai",
+      "createdAt": "2026-07-14T07:29:06.298Z",
+      "status": "evaluated"
+    }
+  ],
+  "githubAnalyses": [
+    {
+      "projectId": "proj_ecosphere",
+      "stars": 12199,
+      "forks": 2033,
+      "contributors": 20,
+      "commits": 100,
+      "languages": {
+        "TypeScript": 99.7,
+        "JavaScript": 0.3,
+        "Nunjucks": 0,
+        "Python": 0
+      },
+      "readmeContent": "<img src=\"https://avatars0.githubusercontent.com/u/1342004?v=3&s=96\" alt=\"Google Inc. logo\" title=\"Google\" align=\"right\" height=\"96\" width=\"96\"/>\n\n# Google APIs Node.js Client\n\n[![npm version][npmimg]][npm]\n[![Downloads][downloadsimg]][downloads]\n[![Known Vulnerabilities][snyk-image]][snyk-url]\n\n[Node.js][node] client library for using Google APIs. Support for authorization and authentication with OAuth 2.0, API Keys and JWT tokens is included.\n\n* [Google APIs](#google-apis)\n* [Getting started](#getting-started)\n  * [Installation](#installation)\n  * [Using the client library](#using-the-client-library)\n  * [Samples](#samples)\n  * [API Reference](#api-reference)\n* [Authentication and authorization](#authentication-and-authorization)\n  * [OAuth2 client](#oauth2-client)\n  * [Using API keys](#using-api-keys)\n  * [Application default credentials](#application-default-credentials)\n  * [Service account credentials](#service-account-credentials)\n  * [Setting global or service-level auth](#setting-global-or-service-level-auth)\n* [Usage](#usage)\n  * [Specifying request body](#specifying-request-body)\n  * [Media uploads](#media-uploads)\n  * [Request Options](#request-options)\n  * [Using a Proxy](#using-a-proxy)\n  * [Supported APIs](#getting-supported-apis)\n  * [TypeScript](#typescript)\n  * [HTTP/2](#http2)\n* [License](#license)\n* [Contributing](#contributing)\n* [Questions/problems?](#questionsproblems)\n\n## Google APIs\nThe full list of supported APIs can be found on the [Google APIs Explorer][apiexplorer]. The API endpoints are automatically generated, so if the API is not in the list, it is currently not supported by this API client library.\n\n### Working with Google Cloud Platform APIs?\nWhen utilizing Google Cloud Platform APIs like Datastore, Cloud Storage, or Pub/Sub, it is advisable to leverage the @google-cloud client libraries. These libraries are purpose-built, idiomatic Node.js clients designed for specific Google Cloud Platform services. We recommend installing individual API packages, such as `@google-cloud/storage`. To explore a comprehensive list of Google Cloud Platform API-specific packages, please refer to https://cloud.google.com/nodejs/docs/reference.\n\n\n\n\n\n\n### Support and maintenance\nThese client libraries are officially supported by Google. However, these libraries are considered complete and are in maintenance mode. This means that we will address critical bugs and security issues but will not add any new features. For Google Cloud Platform APIs, we recommend using [google-cloud-node](https://github.com/GoogleCloudPlatform/google-cloud-node) which is under active development.\n\nThis library supports the maintenance LTS, active LTS, and current release of node.js.  See the [node.js release schedule](https://github.com/nodejs/Release) for more information.\n\n## Getting started\n\n### Installation\nThis library is distributed on `npm`. In order to add it as a dependency, run the following command in your terminal:\n\n```sh\nnpm install googleapis\n```\n\nIf you need to reduce startup times, you can alternatively install a submodule as its own dependency. We make an effort to publish submodules that are __not__ in this [list](https://github.com/googleapis/google-cloud-node#google-cloud-nodejs-client-libraries). In order to add it as a dependency, run the following sample command in your terminal, replacing with your preferred API:\n\n```sh\nnpm install @googleapis/docs\n```\n\nYou can run [this search](https://www.npmjs.com/search?q=scope%3A@googleapis) on `npm`, to find a list of the submodules available.\n### Using the client library\n\nThis is a very simple example. This creates a Blogger client and retrieves the details of a blog given the blog Id:\n\n```js\nconst {google} = require('googleapis');\n\n// Each API may support multiple versions. With this sample, we're getting\n// v3 of the blogger API, and using an API key to authenticate.\nconst blogger = google.blogger({\n  version: 'v3',\n  auth: 'YOUR API KEY'\n});\n\nconst params = {\n  blogId: '3213900'\n};\n\n// get the blog details\nblogger.blogs.get(params, (err, res) => {\n  if (err) {\n    console.error(err);\n    throw err;\n  }\n  console.log(`The blog url is ${res.data.url}`);\n});\n```\n\nInstead of using callbacks you can also use promises!\n\n```js\nblogger.blogs.get(params)\n  .then(res => {\n    console.log(`The blog url is ${res.data.url}`);\n  })\n  .catch(error => {\n    console.error(error);\n  });\n```\n\nOr async/await:\n\n```js\nasync function runSample() {\n  const res = await blogger.blogs.get(params);\n  console.log(`The blog url is ${res.data.url}`);\n}\n\nrunSample().catch(console.error);\n```\n\nAlternatively, you can make calls directly to the APIs by installing a submodule:\n\n```js\nconst docs = require('@googleapis/docs')\n\nconst auth = new docs.auth.GoogleAuth({\n  keyFilename: 'PATH_TO_SERVICE_ACCOUNT_KEY.json',\n    // Scopes can be specified either as an array or as a single, space-delimited string.\n  scopes: ['https://www.googleapis.com/auth/documents']\n});\nconst authClient = await auth.getClient();\n\nconst client = await docs.docs({\n    version: 'v1',\n    auth: authClient\n});\n\nconst createResponse = await client.documents.create({\n    requestBody: {\n      title: 'Your new document!',\n    },\n});\n\nconsole.log(createResponse.data);\n```\n\n### Samples\nThere are a lot of [samples](https://github.com/googleapis/google-api-nodejs-client/tree/main/samples) 🤗  If you're trying to figure out how to use an API ... look there first! You can also search for a given API's\nREST documentation on cloud.google.com, as well as documentation embedded in the source code comments (under src/apis/api-name/version).\n\n### API Reference\nThis library has a full set of [API Reference Documentation](https://googleapis.dev/nodejs/googleapis/latest). This documentation is auto-generated, and the location may change.\n\n## Authentication and authorization\nThere are multiple ways to authenticate to Google APIs. Some services support all authentication methods, while others may only support one or two.\n\n- **OAuth2** - This allows you to make API calls on behalf of a given user.  In this model, the user visits your application, signs in with their Google account, and provides your application with authorization against a set of scopes.  [Learn more](#oauth2-client).\n\n- **API Key** - With an API key, you can access your service from a client or the server.  Typically less secure, this is only available on a small subset of services with limited scopes.  [Learn more](#using-api-keys).\n\n- **Application default credentials** - Provides automatic access to Google APIs using the [Google Cloud SDK](https://cloud.google.com/sdk/) for local development, or the [GCE Metadata Server](https://cloud.google.com/compute/docs/storing-retrieving-metadata) for applications deployed to Google Cloud Platform. [Learn more](#application-default-credentials).\n\n- **Service account credentials** - In this model, your application talks directly to Google APIs using a Service Account. It's useful when you have a backend application that will talk directly to Google APIs from the backend. [Learn more](#service-account-credentials).\n\nTo learn more about the authentication client, see the [Google Auth Library](https://github.com/googleapis/google-auth-library-nodejs).\n\n### OAuth2 client\nThis module comes with an [OAuth2][oauth] client that allows you to retrieve an access token, refresh it, and retry the request seamlessly. The basics of Google's OAuth2 implementation is explained on [Google Authorization and Authentication documentation][authdocs].\n\nIn the following examples, you may need a `CLIENT_ID`, `CLIENT_SECRET` and `REDIRECT_URL`. You can find these pieces of information by going to the [Developer Console][devconsole], clicking your project --> APIs & auth --> credentials.\n- Navigate to the Cloud Console and [Create a new OAuth2 Client Id](https://console.cloud.google.com/apis/credentials/oauthclient)\n- Select `Web Application` for the application type\n- Add an authorized redirect URI with the value `http://localhost:3000/oauth2callback` (or applicable value for your scenario)\n- Click `Create`, and `Ok` on the following screen\n- Click the `Download` icon next to your newly created OAuth2 Client Id\n\nMake sure to store this file in safe place, and *do not check this file into source control!*\n\nFor more information about OAuth2 and how it works, [see here][oauth].\n\nA complete sample application that authorizes and authenticates with the OAuth2 client is available at [`samples/oauth2.js`][oauthexample].\n\n#### Generating an authentication URL\n\nTo ask for permissions from a user to retrieve an access token, you redirect them to a consent page. To create a consent page URL:\n\n```js\nconst {google} = require('googleapis');\n\nconst oauth2Client = new google.auth.OAuth2(\n  YOUR_CLIENT_ID,\n  YOUR_CLIENT_SECRET,\n  YOUR_REDIRECT_URL\n);\n\n// generate a url that asks permissions for Blogger and Google Calendar scopes\nconst scopes = [\n  'https://www.googleapis.com/auth/blogger',\n  'https://www.googleapis.com/auth/calendar'\n];\n\nconst url = oauth2Client.generateAuthUrl({\n  // 'online' (default) or 'offline' (gets refresh_token)\n  access_type: 'offline',\n\n  // If you only need one scope, you can pass it as a string\n  scope: scopes\n});\n```\n\n**IMPORTANT NOTE** - The `refresh_token` is only returned on the first authorization. More details [here](https://github.com/googleapis/google-api-nodejs-client/issues/750#issuecomment-304521450).\n\n#### Retrieve authorization code\n\nOnce a user has given permissions on the consent page, Google will redirect the page to the redirect URL you have provided with a code query parameter.\n\n```\n    GET /oauthcallback?code={authorizationCode}\n```\n#### Retrieve access token\n\nWith the code returned, you can ask for an access token as shown below:\n\n```js\n// This will provide an object with the access_token and refresh_token.\n// Save these somewhere safe so they can be used at a later time.\nconst {tokens} = await oauth2Client.getToken(code)\noauth2Client.setCredentials(tokens);\n```\n\nWith the credentials set on your OAuth2 client - you're ready to go!\n\n#### Handling refresh tokens\nAccess tokens expire. This library will automatically use a refresh token to obtain a new access token if it is about to expire. An easy way to make sure you always store the most recent tokens is to use the `tokens` event:\n\n```js\noauth2Client.on('tokens', (tokens) => {\n  if (tokens.refresh_token) {\n    // store the refresh_token in my database!\n    console.log(tokens.refresh_token);\n  }\n  console.log(tokens.access_token);\n});\n```\nThis tokens event only occurs in the first authorization, and you need to have set your `access_type` to `offline` when calling the  `generateAuthUrl` method to receive the refresh token. If you have already given your app the requisite permissions without setting the appropriate constraints for receiving a refresh token, you will need to re-authorize the application to receive a fresh refresh token. You can revoke your app's access to your account [here](https://myaccount.google.com/permissions).\n\nTo set the `refresh_token` at a later time, you can use the `setCredentials` method:\n\n```js\noauth2Client.setCredentials({\n  refresh_token: `STORED_REFRESH_TOKEN`\n});\n```\n\nOnce the client has a refresh token, access tokens will be acquired and refreshed automatically in the next call to the API.\n\nRefresh tokens may stop working after they are granted, either because:\n- The user has revoked your app's access\n- The refresh token has not been used for 6 months\n- The user changed passwords and the refresh token contains Gmail scopes\n- The user account has exceeded a max number of live refresh tokens\n- The application has a status of 'Testing' and the consent screen is configured for an external user type, causing the token to expire in 7 days\n\nAs a developer, you should write your code to handle the case where a refresh token is no longer working.\n\n\n### Using API keys\nYou may need to send an API key with the request you are going to make. The following uses an API key to make a request to the Blogger API service to retrieve a blog's name, url, and its total amount of posts:\n\n```js\nconst {google} = require('googleapis');\nconst blogger = google.blogger_v3({\n  version: 'v3',\n  auth: 'YOUR_API_KEY' // specify your API key here\n});\n\nconst params = {\n  blogId: '3213900'\n};\n\nasync function main(params) {\n  const res = await blogger.blogs.get({blogId: params.blogId});\n  console.log(`${res.data.name} has ${res.data.posts.totalItems} posts! The blog url is ${res.data.url}`)\n};\n\nmain().catch(console.error);\n```\n\nTo learn more about API keys, please see the [documentation][usingkeys].\n\n#### Application default credentials\n\nRather than manually creating an OAuth2 client, JWT client, or Compute client, the auth library can create the correct credential type for you, depending upon the environment your code is running under.\n\nFor example, a JWT auth client will be created when your code is running on your local developer machine, and a Compute client will be created when the same code is running on a configured instance of Google Compute Engine. The code below shows how to retrieve a default credential type, depending upon the runtime environment.\n\nTo use Application default credentials locally with the [Google Cloud SDK](https://cloud.google.com/sdk/), run:\n\n```sh\n$ gcloud auth application-default login\n```\n\nWhen running in GCP, service authorize is automatically provided via the GCE Metadata server.\n\n```js\nconst {google} = require('googleapis');\nconst compute = google.compute('v1');\n\nasync function main () {\n  const auth = new google.auth.GoogleAuth({\n    // Scopes can be specified either as an array or as a single, space-delimited string.\n    scopes: ['https://www.googleapis.com/auth/compute']\n  });\n  const authClient = await auth.getClient();\n\n  // obtain the current project Id\n  const project = await auth.getProjectId();\n\n  // Fetch the list of GCE zones within a project.\n  const res = await compute.zones.list({ project, auth: authClient });\n  console.log(res.data);\n}\n\nmain().catch(console.error);\n```\n\n### Service account credentials\n\nService accounts allow you to perform server-to-server, app-level authentication using a robot account. You will create a service account, download a keyfile, and use that to authenticate to Google APIs. To create a service account:\n- Go to the [Create Service Account Key page](https://console.cloud.google.com/apis/credentials/serviceaccountkey)\n- Select `New Service Account` in the drop down\n- Click the `Create` button\n\nSave the service account credential file somewhere safe, and *do not check this file into source control*!  To reference the service account credential file, you have a few options.\n\n#### Using the `GOOGLE_APPLICATION_CREDENTIALS` env var\nYou can start process with an environment variable named `GOOGLE_APPLICATION_CREDENTIALS`. The value of this env var should be the full path to the service account credential file:\n\n```sh\n$ GOOGLE_APPLICATION_CREDENTIALS=./your-secret-key.json node server.js\n```\n\n#### Using the `keyFile` property\nAlternatively, you can specify the path to the service account credential file via the `keyFile` property in the `GoogleAuth` constructor:\n\n```js\nconst {google} = require('googleapis');\n\nconst auth = new google.auth.GoogleAuth({\n  keyFile: '/path/to/your-secret-key.json',\n  scopes: ['https://www.googleapis.com/auth/cloud-platform'],\n});\n```\n\n\n### Setting global or service-level auth\n\nYou can set the `auth` as a global or service-level option so you don't need to specify it every request. For example, you can set `auth` as a global option:\n\n```js\nconst {google} = require('googleapis');\n\nconst oauth2Client = new google.auth.OAuth2(\n  YOUR_CLIENT_ID,\n  YOUR_CLIENT_SECRET,\n  YOUR_REDIRECT_URL\n);\n\n// set auth as a global default\ngoogle.options({\n  auth: oauth2Client\n});\n```\n\nInstead of setting the option globally, you can also set the authentication client at the service-level:\n\n```js\nconst {google} = require('googleapis');\nconst oauth2Client = new google.auth.OAuth2(\n  YOUR_CLIENT_ID,\n  YOUR_CLIENT_SECRET,\n  YOUR_REDIRECT_URL\n);\n\nconst drive = google.drive({\n  version: 'v2',\n  auth: oauth2Client\n});\n```\n\nSee the [Options section](#request-options) for more information.\n\n## Usage\n\n### Specifying request body\n\nThe body of the request is specified in the `requestBody` parameter object of the request. The body is specified as a JavaScript object with key/value pairs. For example, this sample creates a watcher that posts notifications to a Google Cloud Pub/Sub topic when emails are sent to a gmail account:\n\n```js\nconst res = await gmail.users.watch({\n  userId: 'me',\n  requestBody: {\n    // Replace with `projects/${PROJECT_ID}/topics/${TOPIC_NAME}`\n    topicName: `projects/el-gato/topics/gmail`\n  }\n});\nconsole.log(res.data);\n```\n\n### Media uploads\nThis client supports multipart media uploads. The resource parameters are specified in the `requestBody` parameter object, and the media itself is specified in the `media.body` parameter with mime-type specified in `media.mimeType`.\n\nThis example uploads a plain text file to Google Drive with the title \"Test\" and contents \"Hello World\".\n\n```js\nconst drive = google.drive({\n  version: 'v3',\n  auth: oauth2Client\n});\n\nconst res = await drive.files.create({\n  requestBody: {\n    name: 'Test',\n    mimeType: 'text/plain'\n  },\n  media: {\n    mimeType: 'text/plain',\n    body: 'Hello World'\n  }\n});\n```\n\nYou can also upload media by specifying `media.body` as a [Readable stream][stream]. This can allow you to upload very large files that cannot fit into memory.\n\n```js\nconst fs = require('fs');\n\nconst drive = google.drive({\n  version: 'v3',\n  auth: oauth2Client\n});\n\nasync function main() {\n  const res = await drive.files.create({\n    requestBody: {\n      name: 'testimage.png',\n      mimeType: 'image/png'\n    },\n    media: {\n      mimeType: 'image/png',\n      body: fs.createReadStream('awesome.png')\n    }\n  });\n  console.log(res.data);\n}\n\nmain().catch(console.error);\n```\n\nFor more examples of creation and modification requests with media attachments, take a look at the `samples/drive/upload.js` sample.\n\n### Request Options\nFor more fine-tuned control over how your API calls are made, we provide you with the ability to specify additional options that can be applied directly to the ['gaxios'][gaxios] object used in this library to make network calls to the API.\n\nYou may specify additional options either in the global `google` object or on a service client basis. The options you specify are attached to the `gaxios` object so whatever `gaxios` supports, this library supports. You may also specify global or per-service request parameters that will be attached to all API calls you make.\n\nA full list of supported options can be [found here](https://github.com/googleapis/gaxios/#request-options).\n\n#### Global options\nYou can choose default options that will be sent with each request. These options will be used for every service instantiated by the google client. In this example, the `timeout` property of `GaxiosOptions` will be set for every request:\n\n```js\nconst {google} = require('googleapis');\ngoogle.options({\n  // All requests made with this object will use these settings unless overridden.\n  timeout: 1000,\n  auth: auth\n});\n```\n\nYou can also modify the parameters sent with each request:\n\n```js\nconst {google} = require('googleapis');\ngoogle.options({\n  // All requests from all services will contain the above query parameter\n  // unless overridden either in a service client or in individual API calls.\n  params: {\n    quotaUser: 'user123@example.com'\n  }\n});\n```\n\n#### Service-client options\n\nYou can also specify options when creating a service client.\n\n```js\nconst blogger = google.blogger({\n  version: 'v3',\n  // All requests made with this object will use the specified auth.\n  auth: 'API KEY';\n});\n```\n\nBy doing this, every API call made with this service client will use `'API KEY'` to authenticate.\n\n**Note:** Created clients are **immutable** so you must create a new one if you want to specify different options.\n\nSimilar to the examples above, you can also modify the parameters used for every call of a given service:\n\n```js\nconst blogger = google.blogger({\n  version: 'v3',\n  // All requests made with this service client will contain the\n  // blogId query parameter unless overridden in individual API calls.\n  params: {\n    blogId: '3213900'\n  }\n});\n\n// Calls with this drive client will NOT contain the blogId query parameter.\nconst drive = google.drive('v3');\n...\n\n```\n\n#### Request-level options\nYou can specify an `auth` object to be used per request. Each request also inherits the options specified at the service level and global level.\n\nFor example:\n\n```js\nconst {google} = require('googleapis');\nconst bigquery = google.bigquery('v2');\n\nasync function main() {\n\n  // This method looks for the GCLOUD_PROJECT and GOOGLE_APPLICATION_CREDENTIALS\n  // environment variables.\n  const auth = new google.auth.GoogleAuth({\n    scopes: ['https://www.googleapis.com/auth/cloud-platform']\n  });\n  const authClient = await auth.getClient();\n\n  const projectId = await auth.getProjectId();\n\n  const request = {\n    projectId,\n    datasetId: '<YOUR_DATASET_ID>',\n\n    // This is a \"request-level\" option\n    auth: authClient\n  };\n\n  const res = await bigquery.datasets.delete(request);\n  console.log(res.data);\n\n}\n\nmain().catch(console.error);\n```\n\nYou can also override *gaxios* options per request, such as `url`, `method`, and `responseType`.\n\nFor example:\n\n```js\nconst res = await drive.files.export({\n  fileId: 'asxKJod9s79', // A Google Doc\n  mimeType: 'application/pdf'\n}, {\n  // Make sure we get the binary data\n  responseType: 'stream'\n});\n```\n\n### Using a Proxy\nYou can use the following environment variables to proxy HTTP and HTTPS requests:\n\n- `HTTP_PROXY` / `http_proxy`\n- `HTTPS_PROXY` / `https_proxy`\n\nWhen HTTP_PROXY / http_proxy are set, they will be used to proxy non-SSL requests that do not have an explicit proxy configuration option present. Similarly, HTTPS_PROXY / https_proxy will be respected for SSL requests that do not have an explicit proxy configuration option. It is valid to define a proxy in one of the environment variables, but then override it for a specific request, using the proxy configuration option.\n\n### Getting Supported APIs\nYou can programmatically obtain the list of supported APIs, and all available versions:\n\n```js\nconst {google} = require('googleapis');\nconst apis = google.getSupportedAPIs();\n```\n\nThis will return an object with the API name as object property names, and an array of version strings as the object values;\n\n### TypeScript\nThis library is written in TypeScript, and provides types out of the box. All classes and interfaces generated for each API are exported under the `${apiName}_${version}` namespace. For example, the Drive v3 API types are all available from the `drive_v3` namespace:\n\n```ts\nimport {\n  google,   // The top level object used to access services\n  drive_v3, // For every service client, there is an exported namespace\n  Auth,     // Namespace for auth related types\n  Common,   // General types used throughout the library\n} from 'googleapis';\n\n// Note: using explicit types like `Auth.GoogleAuth` are only here for\n// demonstration purposes.  Generally with TypeScript, these types would\n// be inferred.\nconst auth: Auth.GoogleAuth = new google.auth.GoogleAuth();\nconst drive: drive_v3.Drive = google.drive({\n  version: 'v3',\n  auth,\n});\n\n// There are generated types for every set of request parameters\nconst listParams: drive_v3.Params$Resource$Files$List = {};\nconst res = await drive.files.list(listParams);\n\n// There are generated types for the response fields as well\nconst listResults: drive_v3.Schema$FileList = res.data;\n```\n\n### HTTP/2\nThis library has support for [HTTP/2](https://developers.google.com/web/fundamentals/performance/http2). To enable it, use the `http2` option anywhere request parameters are accepted:\n\n```js\nconst {google} = require('googleapis');\ngoogle.options({\n  http2: true,\n});\n```\n\nHTTP/2 is often more performant, as it allows multiplexing of multiple concurrent requests over a single socket. In a traditional HTTP/2 API, the client is directly responsible for opening and closing the sessions made to make requests.  To maintain compatibility with the existing API, this module will automatically re-use existing sessions, which are collected after idling for 500ms.  Much of the performance gains will be visible in batch style workloads, and tight loops.\n\n## Release Notes & Breaking Changes\nYou can find a detailed list of breaking changes and new features in our [Release Notes][releasenotes]. If you've used this library before `25.x`, see our [Release Notes][releasenotes] to learn about migrating your code from `24.x.x` to `25.x.x`. It's pretty easy :)\n\n## License\nThis library is licensed under Apache 2.0. Full license text is available in [LICENSE][license].\n\n## Contributing\nWe love contributions! Before submitting a Pull Request, it's always good to start with a new issue first. To learn more, see [CONTRIBUTING][contributing].\n\n## Questions/problems?\n* Ask your development related questions on [Stackoverflow][stackoverflow].\n* If you've found an bug/issue, please [file it on GitHub][bugs].\n\n\n[snyk-image]: https://snyk.io/test/github/googleapis/google-api-nodejs-client/badge.svg\n[snyk-url]: https://snyk.io/test/github/googleapis/google-api-nodejs-client\n[npmimg]: https://img.shields.io/npm/v/googleapis.svg\n[npm]: https://www.npmjs.org/package/googleapis\n[bugs]: https://github.com/googleapis/google-api-nodejs-client/issues\n[node]: http://nodejs.org/\n[stackoverflow]: http://stackoverflow.com/questions/tagged/google-api-nodejs-client\n[apiexplorer]: https://developers.google.com/apis-explorer\n[usingkeys]: https://support.google.com/cloud/answer/6158862?hl=en\n[contributing]: https://github.com/googleapis/google-api-nodejs-client/blob/main/CONTRIBUTING.md\n[license]: https://github.com/googleapis/google-api-nodejs-client/tree/main/LICENSE\n[authdocs]: https://developers.google.com/identity/protocols/OpenIDConnect\n[gaxios]: https://github.com/JustinBeckwith/gaxios\n[stream]: http://nodejs.org/api/stream.html#stream_class_stream_readable\n[releasenotes]: https://github.com/googleapis/google-api-nodejs-client/releases\n[devconsole]: https://console.cloud.google.com/apis/credentials\n[oauth]: https://developers.google.com/identity/protocols/OAuth2\n[oauthexample]: https://github.com/googleapis/google-api-nodejs-client/tree/main/samples/oauth2.js\n[options]: https://github.com/googleapis/google-api-nodejs-client/tree/main#options\n[googlecloud]: https://cloud.google.com/nodejs/docs/reference/libraries\n[googlecloudapis]: https://cloud.google.com/nodejs/docs/reference/apis\n[cloudplatform]: https://cloud.google.com/docs/\n[downloadsimg]: https://img.shields.io/npm/dm/googleapis.svg\n[downloads]: https://www.npmjs.com/package/googleapis\n",
+      "repoStructure": [
+        ".compodocrc",
+        ".eslintignore",
+        ".eslintrc.json",
+        ".gitattributes",
+        ".github/.OwlBot.lock.yaml",
+        ".github/.OwlBot.yaml",
+        ".github/CLOSE_ISSUE_TEMPLATE.md",
+        ".github/CODEOWNERS",
+        ".github/ISSUE_TEMPLATE/bug_report.yml",
+        ".github/ISSUE_TEMPLATE/config.yml",
+        ".github/ISSUE_TEMPLATE/documentation_request.yml",
+        ".github/ISSUE_TEMPLATE/feature_request.yml",
+        ".github/ISSUE_TEMPLATE/processs_request.md",
+        ".github/ISSUE_TEMPLATE/questions.md",
+        ".github/ISSUE_TEMPLATE/support_request.md",
+        ".github/PULL_REQUEST_TEMPLATE.md",
+        ".github/auto-approve.yml",
+        ".github/auto-label.yaml",
+        ".github/generated-files-bot.yml",
+        ".github/release-please.yml",
+        ".github/release-trigger.yml",
+        ".github/scripts/close-invalid-link.cjs",
+        ".github/scripts/close-unresponsive.cjs",
+        ".github/scripts/fixtures/invalidIssueBody.txt",
+        ".github/scripts/fixtures/validIssueBody.txt",
+        ".github/scripts/fixtures/validIssueBodyDifferentLinkLocation.txt",
+        ".github/scripts/package.json",
+        ".github/scripts/remove-response-label.cjs",
+        ".github/scripts/tests/close-invalid-link.test.cjs",
+        ".github/scripts/tests/close-or-remove-response-label.test.cjs",
+        ".github/sync-repo-settings.yaml",
+        ".github/workflows/ci.yaml",
+        ".github/workflows/issues-no-repro.yaml",
+        ".github/workflows/response.yaml",
+        ".github/workflows/update-apis.yaml",
+        ".gitignore",
+        ".jsdoc.js",
+        ".kokoro/.gitattributes",
+        ".kokoro/common.cfg",
+        ".kokoro/continuous/node18/common.cfg",
+        ".kokoro/continuous/node18/lint.cfg",
+        ".kokoro/continuous/node18/samples-test.cfg",
+        ".kokoro/continuous/node18/system-test.cfg",
+        ".kokoro/continuous/node18/test.cfg",
+        ".kokoro/docs.sh",
+        ".kokoro/lint.sh",
+        ".kokoro/populate-secrets.sh",
+        ".kokoro/presubmit/node18/common.cfg",
+        ".kokoro/presubmit/node18/samples-test.cfg",
+        ".kokoro/presubmit/node18/system-test.cfg"
+      ],
+      "commitFrequency": "Avg 29.2 commits/week",
+      "branches": [
+        "aiplatform-release-failure",
+        "autodisco",
+        "changeVersion",
+        "main",
+        "owl-bot-update-lock-0d39e59663287ae929c1d4ccf8ebf7cef9946826c9b86eda7e85d8d752dbb584",
+        "owl-bot-update-lock-1bf17970ae27b8ff1cad706a4d68a3592723575d3a5a9de6afe3d2726eed7f2d",
+        "owl-bot-update-lock-2d9cc5ba06665c588e4d6accba03321d1314358ebb68dd0a7515ff28ada937ff",
+        "owl-bot-update-lock-7c7ecb30ffac77ebdacd15f4b1c6c888f01c212832b9efd73fbf4bfc1284b7d4",
+        "owl-bot-update-lock-8a9cb74f148cabb4157577feda4e4418f5ab1811cdb61e3c0252f150adf72a27",
+        "owl-bot-update-lock-22e41dd7cd82683fa338b647abcc3a29ddb1b17e800b089adc0bec0a3175312c",
+        "owl-bot-update-lock-30b77fc5b701c187c87283d1baa8828e952d78b0066c4ddca492b7f2a29b3b68",
+        "owl-bot-update-lock-54d3915b7c06c51f4339072d9ae9ddec43fe3197d5dd45122ca6ab7a02168765",
+        "owl-bot-update-lock-88b0c493af90eae193d132adb485c018d2692cfc5e76229cf4985f58203bc8c1",
+        "owl-bot-update-lock-2069d88011f3616de15f4d6b5c9e0c5eebbb39dc18a918e493c356956e23ead5",
+        "owl-bot-update-lock-8060aba1f6d5617d08091767141ab2a99ea1ccbd9371fd42ffc208c5329caa73",
+        "owl-bot-update-lock-c7e4968cfc97a204a4b2381f3ecb55cabc40c4cccf88b1ef8bef0d976be87fee",
+        "owl-bot-update-lock-cd5bfcc3d183c1974bca4227785fd397452149bce3785b45a2f735a793ae6241",
+        "owl-bot-update-lock-d0befde9bb710526253d1badc2d5b02884b466acc99db4e26ce8e71e69072ea0",
+        "owl-bot-update-lock-da8a4a745d5eb96f07fa99a550afe49ac80dcd9b93a8d914e4f1f6f1cda653ff",
+        "owl-bot-update-lock-ebf1487fdb5be0d02d49a20b01547be3cd15cbd03f4ded7b47c65eae7920a080",
+        "release-please--branches--main--release-notes",
+        "remove-unused-secrets-v2",
+        "sofisl-patch-1",
+        "sofisl-patch-2",
+        "sofisl-patch-3",
+        "sofisl-patch-4",
+        "sofisl-patch-5",
+        "testHeaderVersion",
+        "upgradeToNode18",
+        "zizmor-cleanup"
+      ],
+      "pullRequests": {
+        "open": 8,
+        "closed": 42,
+        "total": 50
+      },
+      "issues": {
+        "open": 6,
+        "closed": 3,
+        "total": 9
+      },
+      "githubActions": {
+        "hasActions": true,
+        "workflows": [
+          "ci.yaml",
+          "issues-no-repro.yaml",
+          "response.yaml",
+          "update-apis.yaml"
+        ]
+      },
+      "license": "Apache-2.0",
+      "hasGitignore": true,
+      "readmeQuality": {
+        "score": 85,
+        "hasSetupGuide": true,
+        "hasPrerequisites": false,
+        "hasArchitectureSection": true,
+        "missingSections": [
+          "Prerequisites Declaration"
+        ]
+      },
+      "repoHealthScore": 96,
+      "developerPracticeScore": 100,
+      "codeQualityObservations": [
+        "Includes proper `.gitignore` configuration protecting runtime build structures and secrets.",
+        "Established compliance guidelines with active Apache-2.0 open-source licensing.",
+        "Configured automated pipelines with 4 GitHub Actions workflow(s).",
+        "Main codebase utilizes TypeScript, ensuring compiled type-safety and interface integrity.",
+        "Maintains 30 distinct development branches, encouraging isolated feature integration.",
+        "Demonstrates healthy review workflows with 50 recorded Git Pull Request(s)."
+      ],
+      "isPrivate": false,
+      "isEmpty": false,
+      "hasReadme": true,
+      "errorState": null,
+      "id": "gh_ecosphere",
+      "analyzedAt": "2026-07-14T20:03:07.563Z"
+    },
+    {
+      "projectId": "proj_neural_learn",
+      "stars": 69369,
+      "forks": 24298,
+      "contributors": 20,
+      "commits": 100,
+      "languages": {
+        "JavaScript": 100
+      },
+      "readmeContent": "<a href=\"https://expressjs.com/\">\n  <picture>\n    <source media=\"(prefers-color-scheme: dark)\" srcset=\"https://expressjs.com/images/logos/logo-express-white.svg\">\n    <img alt=\"Express Logo\" src=\"https://expressjs.com/images/logos/logo-express-black.svg\" width=\"280\">\n  </picture>\n</a>\n\n**Fast, unopinionated, minimalist web framework for [Node.js](https://nodejs.org).**\n\n## Table of contents\n\n- [Installation](#installation)\n- [Features](#features)\n- [Docs \\& Community](#docs--community)\n- [Quick Start](#quick-start)\n- [Philosophy](#philosophy)\n- [Examples](#examples)\n- [Contributing](#contributing)\n  - [Security Issues](#security-issues)\n  - [Running Tests](#running-tests)\n- [Current project team members](#current-project-team-members)\n  - [TC (Technical Committee)](#tc-technical-committee)\n    - [TC emeriti members](#tc-emeriti-members)\n  - [Triagers](#triagers)\n    - [Emeritus Triagers](#emeritus-triagers)\n- [License](#license)\n\n\n[![NPM Version][npm-version-image]][npm-url]\n[![NPM Downloads][npm-downloads-image]][npm-downloads-url]\n[![Linux Build][github-actions-ci-image]][github-actions-ci-url]\n[![Test Coverage][coveralls-image]][coveralls-url]\n[![OpenSSF Scorecard Badge][ossf-scorecard-badge]][ossf-scorecard-visualizer]\n\n\n```js\nimport express from 'express'\n\nconst app = express()\n\napp.get('/', (req, res) => {\n  res.send('Hello World')\n})\n\napp.listen(3000, () => {\n  console.log('Server is running on http://localhost:3000')\n})\n```\n\n## Installation\n\nThis is a [Node.js](https://nodejs.org/en/) module available through the\n[npm registry](https://www.npmjs.com/).\n\nBefore installing, [download and install Node.js](https://nodejs.org/en/download/).\nNode.js 18 or higher is required.\n\nIf this is a brand new project, make sure to create a `package.json` first with\nthe [`npm init` command](https://docs.npmjs.com/creating-a-package-json-file).\n\nInstallation is done using the\n[`npm install` command](https://docs.npmjs.com/downloading-and-installing-packages-locally):\n\n```bash\nnpm install express\n```\n\nFollow [our installing guide](https://expressjs.com/en/starter/installing.html)\nfor more information.\n\n## Features\n\n  * Robust routing\n  * Focus on high performance\n  * Super-high test coverage\n  * HTTP helpers (redirection, caching, etc)\n  * View system supporting 14+ template engines\n  * Content negotiation\n  * Executable for generating applications quickly\n\n## Docs & Community\n\n  * [Website and Documentation](https://expressjs.com/) - [[website repo](https://github.com/expressjs/expressjs.com)]\n  * [GitHub Organization](https://github.com/expressjs) for Official Middleware & Modules\n  * [Github Discussions](https://github.com/expressjs/discussions) for discussion on the development and usage of Express\n\n**PROTIP** Be sure to read the [migration guide to v5](https://expressjs.com/en/guide/migrating-5)\n\n## Quick Start\n\n  The quickest way to get started with express is to utilize the executable [`express(1)`](https://github.com/expressjs/generator) to generate an application as shown below:\n\n  Install the executable. The executable's major version will match Express's:\n\n```bash\nnpm install -g express-generator@4\n```\n\n  Create the app:\n\n```bash\nexpress /tmp/foo && cd /tmp/foo\n```\n\n  Install dependencies:\n\n```bash\nnpm install\n```\n\n  Start the server:\n\n```bash\nnpm start\n```\n\n  View the website at: http://localhost:3000\n\n## Philosophy\n\n  The Express philosophy is to provide small, robust tooling for HTTP servers, making\n  it a great solution for single page applications, websites, hybrids, or public\n  HTTP APIs.\n\n  Express does not force you to use any specific ORM or template engine. With support for over\n  14 template engines via [@ladjs/consolidate](https://github.com/ladjs/consolidate),\n  you can quickly craft your perfect framework.\n\n## Examples\n\n  To view the examples, clone the Express repository:\n\n```bash\ngit clone https://github.com/expressjs/express.git --depth 1 && cd express\n```\n\n  Then install the dependencies:\n\n```bash\nnpm install\n```\n\n  Then run whichever example you want:\n\n```bash\nnode examples/content-negotiation\n```\n\n## Contributing\n\nThe Express.js project welcomes all constructive contributions. Contributions take many forms,\nfrom code for bug fixes and enhancements, to additions and fixes to documentation, additional\ntests, triaging incoming pull requests and issues, and more!\n\nSee the [Contributing Guide] for more technical details on contributing.\n\nThis project has a [Code of Conduct]. By participating, you are expected to uphold this code.\n\n### Security Issues\n\nIf you discover a security vulnerability in Express, please see [Security Policies and Procedures](https://github.com/expressjs/express/security/policy).\n\n### Running Tests\n\nTo run the test suite, first install the dependencies:\n\n```bash\nnpm install\n```\n\nThen run `npm test`:\n\n```bash\nnpm test\n```\n\n## Current project team members\n\nFor information about the governance of the express.js project, see [GOVERNANCE.md](https://github.com/expressjs/discussions/blob/HEAD/docs/GOVERNANCE.md).\n\nThe original author of Express is [TJ Holowaychuk](https://github.com/tj)\n\n[List of all contributors](https://github.com/expressjs/express/graphs/contributors)\n\n### TC (Technical Committee)\n\n* [UlisesGascon](https://github.com/UlisesGascon) - **Ulises Gascón** (he/him)\n* [jonchurch](https://github.com/jonchurch) - **Jon Church**\n* [wesleytodd](https://github.com/wesleytodd) - **Wes Todd**\n* [LinusU](https://github.com/LinusU) - **Linus Unnebäck**\n* [blakeembrey](https://github.com/blakeembrey) - **Blake Embrey**\n* [sheplu](https://github.com/sheplu) - **Jean Burellier**\n* [crandmck](https://github.com/crandmck) - **Rand McKinney**\n* [ctcpip](https://github.com/ctcpip) - **Chris de Almeida**\n\n<details>\n<summary>TC emeriti members</summary>\n\n#### TC emeriti members\n\n  * [dougwilson](https://github.com/dougwilson) - **Douglas Wilson**\n  * [hacksparrow](https://github.com/hacksparrow) - **Hage Yaapa**\n  * [jonathanong](https://github.com/jonathanong) - **jongleberry**\n  * [niftylettuce](https://github.com/niftylettuce) - **niftylettuce**\n  * [troygoode](https://github.com/troygoode) - **Troy Goode**\n</details>\n\n\n### Triagers\n\n* [aravindvnair99](https://github.com/aravindvnair99) - **Aravind Nair**\n* [bjohansebas](https://github.com/bjohansebas) - **Sebastian Beltran**\n* [carpasse](https://github.com/carpasse) - **Carlos Serrano**\n* [CBID2](https://github.com/CBID2) - **Christine Belzie**\n* [UlisesGascon](https://github.com/UlisesGascon) - **Ulises Gascón** (he/him)\n* [IamLizu](https://github.com/IamLizu) - **S M Mahmudul Hasan** (he/him)\n* [Phillip9587](https://github.com/Phillip9587) - **Phillip Barta**\n* [efekrskl](https://github.com/efekrskl) - **Efe Karasakal**\n* [rxmarbles](https://github.com/rxmarbles) - **Rick Markins** (he/him)\n* [krzysdz](https://github.com/krzysdz)\n* [GroophyLifefor](https://github.com/GroophyLifefor) - **Murat Kirazkaya**\n\n<details>\n<summary>Triagers emeriti members</summary>\n\n#### Emeritus Triagers\n\n  * [AuggieH](https://github.com/AuggieH) - **Auggie Hudak**\n  * [G-Rath](https://github.com/G-Rath) - **Gareth Jones**\n  * [MohammadXroid](https://github.com/MohammadXroid) - **Mohammad Ayashi**\n  * [NawafSwe](https://github.com/NawafSwe) - **Nawaf Alsharqi**\n  * [NotMoni](https://github.com/NotMoni) - **Moni**\n  * [VigneshMurugan](https://github.com/VigneshMurugan) - **Vignesh Murugan**\n  * [davidmashe](https://github.com/davidmashe) - **David Ashe**\n  * [digitaIfabric](https://github.com/digitaIfabric) - **David**\n  * [e-l-i-s-e](https://github.com/e-l-i-s-e) - **Elise Bonner**\n  * [fed135](https://github.com/fed135) - **Frederic Charette**\n  * [firmanJS](https://github.com/firmanJS) - **Firman Abdul Hakim**\n  * [getspooky](https://github.com/getspooky) - **Yasser Ameur**\n  * [ghinks](https://github.com/ghinks) - **Glenn**\n  * [ghousemohamed](https://github.com/ghousemohamed) - **Ghouse Mohamed**\n  * [gireeshpunathil](https://github.com/gireeshpunathil) - **Gireesh Punathil**\n  * [jake32321](https://github.com/jake32321) - **Jake Reed**\n  * [jonchurch](https://github.com/jonchurch) - **Jon Church**\n  * [lekanikotun](https://github.com/lekanikotun) - **Troy Goode**\n  * [marsonya](https://github.com/marsonya) - **Lekan Ikotun**\n  * [mastermatt](https://github.com/mastermatt) - **Matt R. Wilson**\n  * [maxakuru](https://github.com/maxakuru) - **Max Edell**\n  * [mlrawlings](https://github.com/mlrawlings) - **Michael Rawlings**\n  * [rodion-arr](https://github.com/rodion-arr) - **Rodion Abdurakhimov**\n  * [sheplu](https://github.com/sheplu) - **Jean Burellier**\n  * [tarunyadav1](https://github.com/tarunyadav1) - **Tarun yadav**\n  * [tunniclm](https://github.com/tunniclm) - **Mike Tunnicliffe**\n  * [enyoghasim](https://github.com/enyoghasim) - **David Enyoghasim**\n  * [0ss](https://github.com/0ss) - **Salah**\n  * [ejcheng](https://github.com/ejcheng)- **Eric Cheng** (he/him)\n  * [dakshkhetan](https://github.com/dakshkhetan) - **Daksh Khetan** (he/him)\n  * [lucasraziel](https://github.com/lucasraziel) - **Lucas Soares Do Rego**\n  * [mertcanaltin](https://github.com/mertcanaltin) - **Mert Can Altin**\n  * [dpopp07](https://github.com/dpopp07) - **Dustin Popp**\n  * [Sushmeet](https://github.com/Sushmeet) - **Sushmeet Sunger**\n  * [3imed-jaberi](https://github.com/3imed-jaberi) - **Imed Jaberi**\n\n</details>\n\n\n## License\n\n  [MIT](LICENSE)\n\n[coveralls-image]: https://img.shields.io/coverallsCoverage/github/expressjs/express?branch=master\n[coveralls-url]: https://coveralls.io/r/expressjs/express?branch=master\n[github-actions-ci-image]: https://img.shields.io/github/actions/workflow/status/expressjs/express/ci.yml?branch=master&label=ci\n[github-actions-ci-url]: https://github.com/expressjs/express/actions/workflows/ci.yml\n[npm-downloads-image]: https://img.shields.io/npm/dm/express\n[npm-downloads-url]: https://npmcharts.com/compare/express?minimal=true\n[npm-url]: https://npmjs.org/package/express\n[npm-version-image]: https://img.shields.io/npm/v/express\n[ossf-scorecard-badge]: https://api.scorecard.dev/projects/github.com/expressjs/express/badge\n[ossf-scorecard-visualizer]: https://ossf.github.io/scorecard-visualizer/#/projects/github.com/expressjs/express\n[Code of Conduct]: https://github.com/expressjs/.github/blob/HEAD/CODE_OF_CONDUCT.md\n[Contributing Guide]: https://github.com/expressjs/.github/blob/HEAD/CONTRIBUTING.md\n",
+      "repoStructure": [
+        ".editorconfig",
+        ".eslintignore",
+        ".eslintrc.yml",
+        ".github/dependabot.yml",
+        ".github/workflows/ci.yml",
+        ".github/workflows/codeql.yml",
+        ".github/workflows/legacy.yml",
+        ".github/workflows/scorecard.yml",
+        ".gitignore",
+        ".npmrc",
+        "History.md",
+        "LICENSE",
+        "Readme.md",
+        "examples/README.md",
+        "examples/auth/index.js",
+        "examples/auth/views/foot.ejs",
+        "examples/auth/views/head.ejs",
+        "examples/auth/views/login.ejs",
+        "examples/content-negotiation/db.js",
+        "examples/content-negotiation/index.js",
+        "examples/content-negotiation/users.js",
+        "examples/cookie-sessions/index.js",
+        "examples/cookies/index.js",
+        "examples/downloads/files/CCTV大赛上海分赛区.txt",
+        "examples/downloads/files/amazing.txt",
+        "examples/downloads/files/notes/groceries.txt",
+        "examples/downloads/index.js",
+        "examples/ejs/index.js",
+        "examples/ejs/public/stylesheets/style.css",
+        "examples/ejs/views/footer.html",
+        "examples/ejs/views/header.html",
+        "examples/ejs/views/users.html",
+        "examples/error-pages/index.js",
+        "examples/error-pages/views/404.ejs",
+        "examples/error-pages/views/500.ejs",
+        "examples/error-pages/views/error_header.ejs",
+        "examples/error-pages/views/footer.ejs",
+        "examples/error-pages/views/index.ejs",
+        "examples/error/index.js",
+        "examples/hello-world/index.js",
+        "examples/markdown/index.js",
+        "examples/markdown/views/index.md",
+        "examples/multi-router/controllers/api_v1.js",
+        "examples/multi-router/controllers/api_v2.js",
+        "examples/multi-router/index.js",
+        "examples/mvc/controllers/main/index.js",
+        "examples/mvc/controllers/pet/index.js",
+        "examples/mvc/controllers/pet/views/edit.ejs",
+        "examples/mvc/controllers/pet/views/show.ejs",
+        "examples/mvc/controllers/user-pet/index.js"
+      ],
+      "commitFrequency": "Avg 1.7 commits/week",
+      "branches": [
+        "4.x",
+        "5.x",
+        "5.0",
+        "bsebas/check-first-referer",
+        "ci-workflows",
+        "defineProperties-vs-defineProperty",
+        "dependabot/github_actions/github/codeql-action/analyze-4.36.2",
+        "dependabot/github_actions/github/codeql-action/init-4.36.2",
+        "dependabot/github_actions/github/codeql-action/upload-sarif-4.36.2",
+        "dependabot/npm_and_yarn/hbs-4.2.1",
+        "feat/fresh-query-method",
+        "fix/hostname-host-header-injection",
+        "master",
+        "release-branch-diagram",
+        "req.is",
+        "throw-redirect",
+        "ulises/release-dependencies",
+        "ulises/5x-sec-policy"
+      ],
+      "pullRequests": {
+        "open": 15,
+        "closed": 35,
+        "total": 50
+      },
+      "issues": {
+        "open": 4,
+        "closed": 4,
+        "total": 8
+      },
+      "githubActions": {
+        "hasActions": true,
+        "workflows": [
+          "ci.yml",
+          "codeql.yml",
+          "legacy.yml",
+          "scorecard.yml"
+        ]
+      },
+      "license": "MIT",
+      "hasGitignore": true,
+      "readmeQuality": {
+        "score": 85,
+        "hasSetupGuide": true,
+        "hasPrerequisites": true,
+        "hasArchitectureSection": false,
+        "missingSections": [
+          "Architecture Section"
+        ]
+      },
+      "repoHealthScore": 96,
+      "developerPracticeScore": 100,
+      "codeQualityObservations": [
+        "Includes proper `.gitignore` configuration protecting runtime build structures and secrets.",
+        "Established compliance guidelines with active MIT open-source licensing.",
+        "Configured automated pipelines with 4 GitHub Actions workflow(s).",
+        "Maintains 18 distinct development branches, encouraging isolated feature integration.",
+        "Demonstrates healthy review workflows with 50 recorded Git Pull Request(s)."
+      ],
+      "isPrivate": false,
+      "isEmpty": false,
+      "hasReadme": true,
+      "errorState": null,
+      "id": "gh_i94a2amu2",
+      "analyzedAt": "2026-07-14T20:03:21.253Z"
+    }
+  ],
+  "aiEvaluations": [
+    {
+      "projectId": "proj_ecosphere",
+      "ideaScore": 80,
+      "innovationScore": 90,
+      "codeQualityScore": 90,
+      "readmeScore": 60,
+      "uiScore": 80,
+      "aiUsageScore": 80,
+      "technicalScore": 80,
+      "overallScore": 82.5,
+      "feedback": "### Overall Evaluation Justifications\n• **Innovation (9/10):** Excellent approach tackling the target domain using modern container routing loops.\n• **Technical Complexity (8/10):** Solid web architecture utilizing scalable routes, but could benefit from an active DB model.\n• **Code Quality (9/10):** Highly organized codebase layout adhering to robust type safety and clean ES6 standard patterns.\n• **Documentation (6/10):** Detailed documentation with comprehensive installation instructions and list of API environment variables.\n• **GitHub Practices (9/10):** Logical folder layout and clean separation of client/server assets.\n• **UI/UX Flow (8/10):** Clean design motifs, highly suited for real-world analytical operator interfaces.\n• **AI Architecture (8/10):** Sensible usage of AI prompts, though advanced context grounding has room for growth.\n• **Business Impact (8/10):** Excellent commercial potential addressing critical industry data friction gaps.\n\n### Key Strengths\n• Rigorous workspace structure with modern TypeScript configurations.\n• Detailed readme files detailing system variables and run procedures.\n• Highly practical problem statement addressing a genuine industry friction.\n\n### Areas of Weakness\n• Absence of automated testing suites (such as Vitest or Jest).\n• Relies heavily on client-side state hooks which clear upon browser refreshes.\n• Visual responsive design margins could undergo further refinement.\n\n### Strategic Recommendations\n• Integrate automated pipeline scripts to evaluate and catch regression bugs.\n• Add localized translations to make the platform accessible to global hackathon environments.\n• Optimize viewport contrast and tap-target sizes on smaller mobile screens.",
+      "id": "ai_ecosphere",
+      "evaluatedAt": "2026-07-14T20:03:18.174Z"
+    },
+    {
+      "projectId": "proj_neural_learn",
+      "ideaScore": 80,
+      "innovationScore": 80,
+      "codeQualityScore": 80,
+      "readmeScore": 60,
+      "uiScore": 80,
+      "aiUsageScore": 80,
+      "technicalScore": 80,
+      "overallScore": 78,
+      "feedback": "### Overall Evaluation Justifications\n• **Innovation (8/10):** Excellent approach tackling the target domain using modern container routing loops.\n• **Technical Complexity (8/10):** Solid web architecture utilizing scalable routes, but could benefit from an active DB model.\n• **Code Quality (8/10):** Highly organized codebase layout adhering to robust type safety and clean ES6 standard patterns.\n• **Documentation (6/10):** Detailed documentation with comprehensive installation instructions and list of API environment variables.\n• **GitHub Practices (8/10):** Logical folder layout and clean separation of client/server assets.\n• **UI/UX Flow (8/10):** Clean design motifs, highly suited for real-world analytical operator interfaces.\n• **AI Architecture (8/10):** Sensible usage of AI prompts, though advanced context grounding has room for growth.\n• **Business Impact (8/10):** Excellent commercial potential addressing critical industry data friction gaps.\n\n### Key Strengths\n• Rigorous workspace structure with modern TypeScript configurations.\n• Detailed readme files detailing system variables and run procedures.\n• Highly practical problem statement addressing a genuine industry friction.\n\n### Areas of Weakness\n• Absence of automated testing suites (such as Vitest or Jest).\n• Relies heavily on client-side state hooks which clear upon browser refreshes.\n• Visual responsive design margins could undergo further refinement.\n\n### Strategic Recommendations\n• Integrate automated pipeline scripts to evaluate and catch regression bugs.\n• Add localized translations to make the platform accessible to global hackathon environments.\n• Optimize viewport contrast and tap-target sizes on smaller mobile screens.",
+      "id": "ai_1ts0cuzif",
+      "evaluatedAt": "2026-07-14T20:03:24.613Z"
+    }
+  ],
+  "judgeReviews": [],
+  "comments": [
+    {
+      "id": "comm_1",
+      "projectId": "proj_ecosphere",
+      "userId": "usr_admin",
+      "userName": "Professor Angela Sterling",
+      "userRole": "Admin",
+      "content": "Outstanding submission GreenEarth Developers! Your implementation of spatial carbon calculations is remarkable. The structure is highly polished.",
+      "createdAt": "2026-07-13T20:29:06.298Z"
+    },
+    {
+      "id": "comm_2",
+      "projectId": "proj_ecosphere",
+      "userId": "usr_part1",
+      "userName": "Alice Johnson",
+      "userRole": "Participant",
+      "content": "Thank you Professor Sterling! We added responsive details to highlight the spatial calculations you mentioned.",
+      "createdAt": "2026-07-13T21:29:06.298Z"
+    }
+  ],
+  "certificates": [],
+  "liveAnalyses": []
+}

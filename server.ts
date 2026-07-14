@@ -18,16 +18,7 @@ const PORT = 3000;
 // Body parser
 app.use(express.json());
 
-// Ensure database is initialized from Firebase before processing requests
-app.use(async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    await db.ensureInitialized();
-    next();
-  } catch (error: any) {
-    console.error("Database initialization failed:", error);
-    res.status(500).json({ error: "Database initialization failed: " + error.message });
-  }
-});
+// Database initialization runs in the background inside db.ts constructor
 
 // Initialize Gemini Client
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;

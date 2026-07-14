@@ -100,6 +100,15 @@ const DEFAULT_STATE = (): DBState => ({
   liveAnalyses: []
 });
 
+const withTimeout = <T>(promise: Promise<T>, timeoutMs: number, operationName: string): Promise<T> => {
+  return Promise.race([
+    promise,
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`Firestore operation '${operationName}' timed out after ${timeoutMs}ms`)), timeoutMs)
+    )
+  ]);
+};
+
 class LocalDB {
   private state: DBState = DEFAULT_STATE();
   private initPromise: Promise<void> | null = null;
@@ -126,15 +135,15 @@ class LocalDB {
     }
 
     try {
-      console.log("Loading data from Firestore...");
+      console.log("Loading data from Firestore with safe timeouts...");
       const collectionsList = [
         "users", "teams", "participants", "hackathons", "projects", 
         "githubAnalyses", "aiEvaluations", "judgeReviews", "comments", "certificates", "liveAnalyses"
       ];
 
-      // Check if users collection exists and has documents
+      // Check if users collection exists and has documents (timeout after 4 seconds)
       const usersCol = collection(dbFirestore, "users");
-      const usersSnap = await getDocs(usersCol);
+      const usersSnap = await withTimeout(getDocs(usersCol), 4000, "check users collection");
 
       if (usersSnap.empty) {
         console.log("Firestore is empty. Seeding Firestore with default data...");
@@ -145,19 +154,23 @@ class LocalDB {
           const items = this.state[colName as keyof DBState] || [];
           for (const item of items) {
             const docId = (item as any).id || (item as any).url || "default";
-            await setDoc(doc(dbFirestore, colName, docId), item);
+            await withTimeout(setDoc(doc(dbFirestore, colName, docId), item), 2000, `seed setDoc ${colName}/${docId}`);
           }
         }
         console.log("Firestore seeding completed.");
       } else {
         // Load all collections from Firestore
         for (const colName of collectionsList) {
-          const querySnapshot = await getDocs(collection(dbFirestore, colName));
-          const docs: any[] = [];
-          querySnapshot.forEach((d) => {
-            docs.push({ id: d.id, ...d.data() });
-          });
-          this.state[colName as keyof DBState] = docs;
+          try {
+            const querySnapshot = await withTimeout(getDocs(collection(dbFirestore, colName)), 3000, `load collection ${colName}`);
+            const docs: any[] = [];
+            querySnapshot.forEach((d) => {
+              docs.push({ id: d.id, ...d.data() });
+            });
+            this.state[colName as keyof DBState] = docs;
+          } catch (colErr) {
+            console.error(`Failed to load collection ${colName} from Firestore, keeping local file/memory data:`, colErr);
+          }
         }
         console.log("Firestore data loaded successfully into memory.");
       }
@@ -175,19 +188,19 @@ class LocalDB {
     }
     try {
       const colRef = collection(dbFirestore, colName);
-      const querySnapshot = await getDocs(colRef);
+      const querySnapshot = await withTimeout(getDocs(colRef), 4000, `persist query ${colName}`);
       const currentIds = new Set((this.state[colName] || []).map((item: any) => item.id || item.url || ""));
 
       // Overwrite / write all current items
       for (const item of (this.state[colName] || [])) {
         const docId = (item as any).id || (item as any).url || "default";
-        await setDoc(doc(dbFirestore, colName, docId), item);
+        await withTimeout(setDoc(doc(dbFirestore, colName, docId), item), 3000, `persist setDoc ${colName}/${docId}`);
       }
 
       // Delete any items that are no longer present
       for (const d of querySnapshot.docs) {
         if (!currentIds.has(d.id)) {
-          await deleteDoc(doc(dbFirestore, colName, d.id));
+          await withTimeout(deleteDoc(doc(dbFirestore, colName, d.id)), 3000, `persist deleteDoc ${colName}/${d.id}`);
         }
       }
     } catch (err) {
