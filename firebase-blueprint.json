@@ -1,0 +1,175 @@
+{
+  "entities": {
+    "users": {
+      "title": "User",
+      "description": "User profile with role and credentials",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "passwordHash": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "email", "passwordHash", "name", "role"]
+    },
+    "teams": {
+      "title": "Team",
+      "description": "A hackathon team",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "members": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "participants": {
+      "title": "Participant",
+      "description": "A participant bio and registration details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "teamId": { "type": "string" },
+        "college": { "type": "string" },
+        "bio": { "type": "string" }
+      },
+      "required": ["id", "userId"]
+    },
+    "hackathons": {
+      "title": "HackathonEvent",
+      "description": "A hackathon event",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "startDate": { "type": "string" },
+        "endDate": { "type": "string" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["id", "name", "description", "startDate", "endDate", "active"]
+    },
+    "projects": {
+      "title": "ProjectSubmission",
+      "description": "A project submitted to a hackathon",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projectName": { "type": "string" },
+        "teamName": { "type": "string" },
+        "teamMembers": { "type": "string" },
+        "description": { "type": "string" },
+        "problemStatement": { "type": "string" },
+        "githubUrl": { "type": "string" },
+        "aiStudioUrl": { "type": "string" },
+        "liveUrl": { "type": "string" },
+        "demoVideoUrl": { "type": "string" },
+        "presentationDocName": { "type": "string" },
+        "presentationDocUrl": { "type": "string" },
+        "hackathonId": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "projectName", "teamName", "description", "hackathonId", "status"]
+    },
+    "githubAnalyses": {
+      "title": "GitHubAnalysis",
+      "description": "GitHub repository analysis results",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projectId": { "type": "string" },
+        "stars": { "type": "number" },
+        "forks": { "type": "number" },
+        "contributors": { "type": "number" },
+        "commits": { "type": "number" },
+        "analyzedAt": { "type": "string" }
+      },
+      "required": ["id", "projectId"]
+    },
+    "aiEvaluations": {
+      "title": "AIEvaluation",
+      "description": "AI analysis and evaluation scores",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projectId": { "type": "string" },
+        "ideaScore": { "type": "number" },
+        "innovationScore": { "type": "number" },
+        "overallScore": { "type": "number" }
+      },
+      "required": ["id", "projectId", "overallScore"]
+    },
+    "judgeReviews": {
+      "title": "JudgeReview",
+      "description": "Reviews from judges",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projectId": { "type": "string" },
+        "judgeId": { "type": "string" },
+        "judgeName": { "type": "string" },
+        "overallScore": { "type": "number" }
+      },
+      "required": ["id", "projectId", "judgeId", "overallScore"]
+    },
+    "comments": {
+      "title": "Comment",
+      "description": "User comments on projects",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projectId": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userRole": { "type": "string" },
+        "content": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "projectId", "userId", "content"]
+    },
+    "certificates": {
+      "title": "Certificate",
+      "description": "Certificate of participation or winning",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projectId": { "type": "string" },
+        "projectName": { "type": "string" },
+        "teamName": { "type": "string" },
+        "recipientEmail": { "type": "string" },
+        "recipientName": { "type": "string" },
+        "role": { "type": "string" },
+        "issuedAt": { "type": "string" }
+      },
+      "required": ["id", "projectId", "recipientEmail", "recipientName", "role"]
+    },
+    "liveAnalyses": {
+      "title": "LiveAnalysisResult",
+      "description": "Analyses from live URLs",
+      "type": "object",
+      "properties": {
+        "url": { "type": "string" },
+        "analyzedAt": { "type": "string" }
+      },
+      "required": ["url", "analyzedAt"]
+    }
+  },
+  "firestore": {
+    "users": { "schema": "users", "description": "Users" },
+    "teams": { "schema": "teams", "description": "Teams" },
+    "participants": { "schema": "participants", "description": "Participants" },
+    "hackathons": { "schema": "hackathons", "description": "Hackathons" },
+    "projects": { "schema": "projects", "description": "Projects" },
+    "githubAnalyses": { "schema": "githubAnalyses", "description": "GitHub analyses" },
+    "aiEvaluations": { "schema": "aiEvaluations", "description": "AI evaluations" },
+    "judgeReviews": { "schema": "judgeReviews", "description": "Judge reviews" },
+    "comments": { "schema": "comments", "description": "Comments" },
+    "certificates": { "schema": "certificates", "description": "Certificates" },
+    "liveAnalyses": { "schema": "liveAnalyses", "description": "Live url analyses" }
+  }
+}

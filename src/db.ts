@@ -141,40 +141,55 @@ class LocalDB {
         "githubAnalyses", "aiEvaluations", "judgeReviews", "comments", "certificates", "liveAnalyses"
       ];
 
-      // Check if users collection exists and has documents (timeout after 4 seconds)
-      const usersCol = collection(dbFirestore, "users");
-      const usersSnap = await withTimeout(getDocs(usersCol), 4000, "check users collection");
-
-      if (usersSnap.empty) {
-        console.log("Firestore is empty. Seeding Firestore with default data...");
-        this.seed(); // Seeds in-memory state
-        
-        // Batch upload seed data to Firestore to keep it fast
-        for (const colName of collectionsList) {
-          const items = this.state[colName as keyof DBState] || [];
-          for (const item of items) {
-            const docId = (item as any).id || (item as any).url || "default";
-            await withTimeout(setDoc(doc(dbFirestore, colName, docId), item), 2000, `seed setDoc ${colName}/${docId}`);
-          }
-        }
-        console.log("Firestore seeding completed.");
-      } else {
-        // Load all collections from Firestore
-        for (const colName of collectionsList) {
-          try {
-            const querySnapshot = await withTimeout(getDocs(collection(dbFirestore, colName)), 3000, `load collection ${colName}`);
+      // Load all collections from Firestore with self-healing / seeding for empty collections
+      for (const colName of collectionsList) {
+        try {
+          const querySnapshot = await withTimeout(getDocs(collection(dbFirestore, colName)), 4000, `load collection ${colName}`);
+          
+          if (!querySnapshot.empty) {
+            // Load documents from Firestore
             const docs: any[] = [];
             querySnapshot.forEach((d) => {
               docs.push({ id: d.id, ...d.data() });
             });
+
+            // Special self-healing: Ensure Admin user always exists in 'users' collection
+            if (colName === "users") {
+              const adminEmail = "admin@hackathon.edu";
+              const adminUserExists = docs.some(u => u.email && u.email.toLowerCase() === adminEmail);
+              if (!adminUserExists) {
+                const seededAdmin = this.state.users.find(u => u.email && u.email.toLowerCase() === adminEmail);
+                if (seededAdmin) {
+                  docs.push(seededAdmin);
+                  await withTimeout(setDoc(doc(dbFirestore, "users", seededAdmin.id), seededAdmin), 2000, "ensure admin user in firestore");
+                  console.log("Seeded default Admin user into Firestore users collection.");
+                }
+              }
+            }
+
             this.state[colName as keyof DBState] = docs;
-          } catch (colErr) {
-            console.error(`Failed to load collection ${colName} from Firestore, keeping local file/memory data:`, colErr);
+            console.log(`Loaded ${docs.length} documents for ${colName} from Firestore.`);
+          } else {
+            // Collection is empty in Firestore. Let's see if we have local seed data from init()
+            const localItems = this.state[colName as keyof DBState] || [];
+            if (localItems.length > 0) {
+              console.log(`Firestore collection ${colName} is empty. Seeding it with ${localItems.length} default items...`);
+              for (const item of localItems) {
+                const docId = (item as any).id || (item as any).url || "default";
+                await withTimeout(setDoc(doc(dbFirestore, colName, docId), item), 2000, `seed setDoc ${colName}/${docId}`);
+              }
+              // Keep the local state
+              console.log(`Seeded ${colName} collection successfully in Firestore.`);
+            } else {
+              this.state[colName as keyof DBState] = [];
+            }
           }
+        } catch (colErr) {
+          console.error(`Failed to load/seed collection ${colName} from Firestore, keeping local file/memory data:`, colErr);
         }
-        console.log("Firestore data loaded successfully into memory.");
       }
       this.isInitialized = true;
+      console.log("Firestore initialization and self-healing completed.");
     } catch (error) {
       console.error("Failed to initialize Firebase database, falling back to local file DB:", error);
       this.isInitialized = true;
