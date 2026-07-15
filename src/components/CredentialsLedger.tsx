@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { 
   Search, Award, ShieldCheck, Copy, Check, ExternalLink, 
-  Sparkles, Calendar, Mail, User, Folder, Users, AlertCircle, RefreshCw
+  Sparkles, Calendar, Mail, User, Folder, Users, AlertCircle, RefreshCw, Eye
 } from "lucide-react";
 import { motion } from "motion/react";
+import { CertificateModal } from "./CertificateModal.js";
 
 interface CredentialsLedgerProps {
   token?: string | null;
@@ -16,6 +17,10 @@ export function CredentialsLedger({ token }: CredentialsLedgerProps) {
   const [error, setError] = useState("");
   const [certificates, setCertificates] = useState<any[]>([]);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  
+  // High fidelity certificate modal integration state
+  const [selectedCertificate, setSelectedCertificate] = useState<any | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Automatically check URL parameters or localStorage or state if needed
   useEffect(() => {
@@ -304,6 +309,17 @@ export function CredentialsLedger({ token }: CredentialsLedgerProps) {
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
+                              onClick={() => {
+                                setSelectedCertificate(cert);
+                                setIsModalOpen(true);
+                              }}
+                              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-xs font-extrabold text-indigo-700 rounded-xl shadow-sm transition-all cursor-pointer"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              View & Print
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => handleCopyLink(cert.certificateCode)}
                               className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-white border border-slate-200 hover:border-slate-300 rounded-xl text-xs font-extrabold text-slate-700 hover:text-slate-900 shadow-sm transition-all cursor-pointer"
                             >
@@ -323,7 +339,7 @@ export function CredentialsLedger({ token }: CredentialsLedgerProps) {
                               href={`/api/certificates?code=${cert.certificateCode}`}
                               target="_blank"
                               rel="noreferrer"
-                              className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 rounded-xl text-xs font-extrabold text-white shadow-sm transition-all cursor-pointer"
+                              className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs font-extrabold text-slate-700 shadow-sm transition-all cursor-pointer"
                             >
                               <ExternalLink className="w-3.5 h-3.5" />
                               JSON Verify
@@ -373,6 +389,16 @@ export function CredentialsLedger({ token }: CredentialsLedgerProps) {
           </div>
         )}
       </div>
+
+      {/* High Fidelity Certificate Viewer Modal Overlay */}
+      <CertificateModal
+        certificate={selectedCertificate}
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setSelectedCertificate(null);
+        }}
+      />
     </div>
   );
 }

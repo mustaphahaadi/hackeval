@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { Shield, Users, Award, Calendar, RefreshCw, AlertCircle, Plus, Check, Trash, Power, Download, Edit, Save, X, Search, FolderGit, ArrowLeft, Play, BarChart2 } from "lucide-react";
+import { Shield, Users, Award, Calendar, RefreshCw, AlertCircle, Plus, Check, Trash, Power, Download, Edit, Save, X, Search, FolderGit, ArrowLeft, Play, BarChart2, Eye } from "lucide-react";
 import { User, HackathonEvent, ProjectSubmission } from "../types";
+import { CertificateModal } from "./CertificateModal.js";
 
 interface AdminDashboardProps {
   token: string;
@@ -11,6 +12,10 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
   const [hackathons, setHackathons] = useState<HackathonEvent[]>([]);
   const [projects, setProjects] = useState<ProjectSubmission[]>([]);
   const [certificates, setCertificates] = useState<any[]>([]);
+  
+  // Certificate viewer states
+  const [selectedCertificate, setSelectedCertificate] = useState<any | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   
   const [subTab, setSubTab] = useState<"overview" | "roles" | "teams" | "certs" | "events" | "export">("overview");
   const [loading, setLoading] = useState(true);
@@ -1250,7 +1255,17 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                             </span>
                           </td>
                           <td className="px-4 py-3 font-mono text-[10px] text-slate-500">{cert.certificateCode}</td>
-                          <td className="px-4 py-3 text-right">
+                          <td className="px-4 py-3 text-right flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedCertificate(cert);
+                                setIsModalOpen(true);
+                              }}
+                              className="text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-2 py-1 rounded transition-all font-semibold inline-flex items-center gap-0.5 cursor-pointer"
+                            >
+                              <Eye className="w-3.5 h-3.5" /> View
+                            </button>
                             {confirmDeleteCertId === cert.id ? (
                               <div className="inline-flex items-center gap-1.5 bg-rose-50 border border-rose-200 rounded-md p-1">
                                 <span className="text-[9px] text-rose-700 font-bold px-1">Revoke?</span>
@@ -1871,6 +1886,16 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
           )}
         </div>
       )}
+
+      {/* Dynamic landscape A4 certificate generator & print utility */}
+      <CertificateModal
+        certificate={selectedCertificate}
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setSelectedCertificate(null);
+        }}
+      />
     </div>
   );
 }
