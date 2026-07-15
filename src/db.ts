@@ -4,6 +4,7 @@ import { fileURLToPath } from "url";
 import bcrypt from "bcryptjs";
 import { initializeApp } from "firebase/app";
 import { initializeFirestore, doc, setDoc, deleteDoc, getDocs, collection } from "firebase/firestore";
+import firebaseAppletConfig from "../firebase-applet-config.json";
 
 import {
   User,
@@ -25,7 +26,7 @@ import {
 let dbFirestore: any = null;
 
 try {
-  let firebaseConfig: any = null;
+  let firebaseConfig: any = firebaseAppletConfig;
   let currentDir = "";
   try {
     currentDir = path.dirname(fileURLToPath(import.meta.url));
