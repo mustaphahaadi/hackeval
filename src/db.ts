@@ -125,6 +125,7 @@ class LocalDB {
   private state: DBState = DEFAULT_STATE();
   private initPromise: Promise<void> | null = null;
   private isInitialized = false;
+  private lastRefreshTime = 0;
 
   constructor() {
     this.init(); // Sync fallback init so we don't start with undefined/empty state before async completes
@@ -133,10 +134,52 @@ class LocalDB {
     });
   }
 
-  ensureInitialized(): Promise<void> {
-    if (this.initPromise) return this.initPromise;
-    this.initPromise = this.initFirebase();
-    return this.initPromise;
+  async ensureInitialized(): Promise<void> {
+    if (!this.initPromise) {
+      this.initPromise = this.initFirebase();
+    }
+    await this.initPromise;
+    await this.refresh();
+  }
+
+  async refresh(force = false): Promise<void> {
+    if (!dbFirestore) return;
+
+    const now = Date.now();
+    // Throttle refresh to once every 2 seconds to avoid excessive reads
+    if (!force && now - this.lastRefreshTime < 2000) {
+      return;
+    }
+
+    try {
+      const collectionsList = [
+        "users", "teams", "participants", "hackathons", "projects", 
+        "githubAnalyses", "aiEvaluations", "judgeReviews", "comments", "certificates", "liveAnalyses"
+      ];
+
+      await Promise.all(collectionsList.map(async (colName) => {
+        try {
+          const querySnapshot = await withTimeout(getDocs(collection(dbFirestore, colName)), 4000, `refresh collection ${colName}`);
+          if (!querySnapshot.empty) {
+            const docs: any[] = [];
+            querySnapshot.forEach((d) => {
+              docs.push({ id: d.id, ...d.data() });
+            });
+            this.state[colName as keyof DBState] = docs;
+          } else {
+            if (!this.state[colName as keyof DBState]) {
+              this.state[colName as keyof DBState] = [];
+            }
+          }
+        } catch (colErr) {
+          console.error(`Failed to refresh collection ${colName}:`, colErr);
+        }
+      }));
+
+      this.lastRefreshTime = Date.now();
+    } catch (err) {
+      console.error("Error during DB refresh:", err);
+    }
   }
 
   private async initFirebase() {
@@ -201,6 +244,7 @@ class LocalDB {
         }
       }));
       this.isInitialized = true;
+      this.lastRefreshTime = Date.now();
       console.log("Firestore initialization and self-healing completed.");
     } catch (error) {
       console.error("Failed to initialize Firebase database, falling back to local file DB:", error);
