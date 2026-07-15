@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Shield, Users, Award, Calendar, RefreshCw, AlertCircle, Plus, Check, Trash, Power, Download, Edit, Save, X, Search, FolderGit, ArrowLeft, Play } from "lucide-react";
+import { Shield, Users, Award, Calendar, RefreshCw, AlertCircle, Plus, Check, Trash, Power, Download, Edit, Save, X, Search, FolderGit, ArrowLeft, Play, BarChart2 } from "lucide-react";
 import { User, HackathonEvent, ProjectSubmission } from "../types";
 
 interface AdminDashboardProps {
@@ -12,7 +12,7 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
   const [projects, setProjects] = useState<ProjectSubmission[]>([]);
   const [certificates, setCertificates] = useState<any[]>([]);
   
-  const [subTab, setSubTab] = useState<"roles" | "teams" | "certs" | "events" | "export">("roles");
+  const [subTab, setSubTab] = useState<"overview" | "roles" | "teams" | "certs" | "events" | "export">("overview");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -21,6 +21,27 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
   const [confirmDeleteProjId, setConfirmDeleteProjId] = useState<string | null>(null);
   const [confirmDeleteHkId, setConfirmDeleteHkId] = useState<string | null>(null);
   const [confirmDeleteCertId, setConfirmDeleteCertId] = useState<string | null>(null);
+
+  // Specific Project manual scoring states
+  const [reviewingProjId, setReviewingProjId] = useState<string | null>(null);
+  const [reviewIdea, setReviewIdea] = useState(8);
+  const [reviewInnovation, setReviewInnovation] = useState(8);
+  const [reviewCodeQuality, setReviewCodeQuality] = useState(8);
+  const [reviewReadme, setReviewReadme] = useState(8);
+  const [reviewUi, setReviewUi] = useState(8);
+  const [reviewAiUsage, setReviewAiUsage] = useState(8);
+  const [reviewTechnical, setReviewTechnical] = useState(8);
+  const [reviewFeedback, setReviewFeedback] = useState("");
+  
+  // Specific Project single AI evaluation loading state
+  const [singleEvalLoadingId, setSingleEvalLoadingId] = useState<string | null>(null);
+
+  // Hackathon Event inline editing state
+  const [isEditingHk, setIsEditingHk] = useState(false);
+  const [editHkName, setEditHkName] = useState("");
+  const [editHkDesc, setEditHkDesc] = useState("");
+  const [editHkStart, setEditHkStart] = useState("");
+  const [editHkEnd, setEditHkEnd] = useState("");
 
   // Hackathon detailed view
   const [selectedHk, setSelectedHk] = useState<HackathonEvent | null>(null);
@@ -281,6 +302,90 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
     }
   };
 
+  const handleUpdateHackathon = async (hkId: string, updatedFields: Partial<HackathonEvent>) => {
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch(`/api/hackathons/${hkId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(updatedFields)
+      });
+
+      if (!res.ok) throw new Error("Failed to update hackathon details.");
+      setSuccess("Hackathon details updated successfully.");
+      if (selectedHk && selectedHk.id === hkId) {
+        setSelectedHk({ ...selectedHk, ...updatedFields });
+      }
+      setIsEditingHk(false);
+      fetchData();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const handleScoreProject = async (projectId: string) => {
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch("/api/reviews", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          projectId,
+          scores: {
+            idea: Number(reviewIdea),
+            innovation: Number(reviewInnovation),
+            codeQuality: Number(reviewCodeQuality),
+            readme: Number(reviewReadme),
+            ui: Number(reviewUi),
+            aiUsage: Number(reviewAiUsage),
+            technical: Number(reviewTechnical)
+          },
+          feedback: reviewFeedback
+        })
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.error || "Failed to submit organizer review.");
+      }
+
+      setSuccess("Organizer review and scores submitted successfully!");
+      setReviewingProjId(null);
+      setReviewFeedback("");
+      fetchData();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const handleSingleAIEvaluation = async (projectId: string) => {
+    setError("");
+    setSuccess("");
+    setSingleEvalLoadingId(projectId);
+    try {
+      const res = await fetch(`/api/evaluate/${projectId}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Failed to evaluate project using AI.");
+      const data = await res.json();
+      setSuccess(`AI Evaluation completed successfully! Overall score: ${data.overallScore}/100.`);
+      fetchData();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSingleEvalLoadingId(null);
+    }
+  };
+
   const handleStartEdit = (p: ProjectSubmission) => {
     setEditingProjectId(p.id);
     setEditProjectName(p.projectName);
@@ -463,6 +568,15 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
       {/* Sub tabs */}
       <div className="border-b border-slate-200 flex flex-wrap gap-x-6 gap-y-2 text-sm">
         <button
+          onClick={() => setSubTab("overview")}
+          className={`pb-3 font-semibold transition-all border-b-2 cursor-pointer flex items-center gap-1.5 ${
+            subTab === "overview" ? "border-indigo-600 text-indigo-600 font-bold" : "border-transparent text-slate-500 hover:text-slate-900"
+          }`}
+        >
+          <BarChart2 className="w-4 h-4" />
+          Platform Overview
+        </button>
+        <button
           onClick={() => setSubTab("roles")}
           className={`pb-3 font-semibold transition-all border-b-2 cursor-pointer ${
             subTab === "roles" ? "border-indigo-600 text-indigo-600 font-bold" : "border-transparent text-slate-500 hover:text-slate-900"
@@ -515,6 +629,191 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
         </div>
       ) : (
         <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-sm">
+          {subTab === "overview" && (
+            <div className="space-y-8 animate-fade-in">
+              {/* KPIs Header */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-slate-50 border border-slate-200/85 rounded-xl p-5 space-y-2 text-left">
+                  <div className="flex items-center justify-between text-slate-500">
+                    <span className="text-[10px] font-bold uppercase tracking-wider">Active Hackathons</span>
+                    <Calendar className="w-5 h-5 text-indigo-500" />
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-bold text-slate-900">
+                      {hackathons.filter(h => h.active).length}
+                    </span>
+                    <span className="text-xs text-slate-400">/ {hackathons.length} total</span>
+                  </div>
+                  <p className="text-[11px] text-emerald-600 font-medium">Published and receiving projects</p>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200/85 rounded-xl p-5 space-y-2 text-left">
+                  <div className="flex items-center justify-between text-slate-500">
+                    <span className="text-[10px] font-bold uppercase tracking-wider">Registered Teams</span>
+                    <FolderGit className="w-5 h-5 text-indigo-500" />
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-bold text-slate-900">
+                      {projects.length}
+                    </span>
+                    <span className="text-xs text-slate-400">registered</span>
+                  </div>
+                  <p className="text-[11px] text-indigo-600 font-medium">Submissions synced across all events</p>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200/85 rounded-xl p-5 space-y-2 text-left">
+                  <div className="flex items-center justify-between text-slate-500">
+                    <span className="text-[10px] font-bold uppercase tracking-wider">AI Scored Rate</span>
+                    <Power className="w-5 h-5 text-indigo-500" />
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-bold text-slate-900">
+                      {projects.length > 0 ? Math.round((projects.filter(p => p.status === "evaluated").length / projects.length) * 100) : 0}%
+                    </span>
+                    <span className="text-xs text-slate-400">
+                      ({projects.filter(p => p.status === "evaluated").length}/{projects.length})
+                    </span>
+                  </div>
+                  <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                    <div 
+                      className="bg-indigo-600 h-full rounded-full transition-all duration-500" 
+                      style={{ width: `${projects.length > 0 ? (projects.filter(p => p.status === "evaluated").length / projects.length) * 100 : 0}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 border border-slate-200/85 rounded-xl p-5 space-y-2 text-left">
+                  <div className="flex items-center justify-between text-slate-500">
+                    <span className="text-[10px] font-bold uppercase tracking-wider">Awards Issued</span>
+                    <Award className="w-5 h-5 text-indigo-500" />
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-bold text-slate-900">
+                      {certificates.length}
+                    </span>
+                    <span className="text-xs text-slate-400">certificates</span>
+                  </div>
+                  <p className="text-[11px] text-purple-600 font-medium">Cryptographic credentials issued</p>
+                </div>
+              </div>
+
+              {/* Playbook / Guidance */}
+              <div className="bg-white border border-indigo-50 rounded-2xl p-6 sm:p-8 space-y-6 text-left">
+                <div className="flex items-start gap-4">
+                  <div className="bg-indigo-50 p-2.5 rounded-xl border border-indigo-100 shrink-0">
+                    <Shield className="w-6 h-6 text-indigo-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-sans font-bold text-slate-900 text-lg">Hackathon Operational Playbook</h3>
+                    <p className="text-slate-500 text-sm mt-1">
+                      Welcome to the administrator panel. Follow this standardized step-by-step guidance to initialize, manage, and close hackathons on the HackEval platform.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-100">
+                  <div className="space-y-4">
+                    <div className="flex gap-3">
+                      <div className="w-6 h-6 rounded-full bg-indigo-50 border border-indigo-200 flex items-center justify-center text-xs font-extrabold text-indigo-600 shrink-0 mt-0.5">
+                        1
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900">Define Hackathon Events</h4>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Go to the **Hackathon Events** tab to create a new event. Provide the timeline, description, and toggle its active state to publish it on the main catalog.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3">
+                      <div className="w-6 h-6 rounded-full bg-indigo-50 border border-indigo-200 flex items-center justify-center text-xs font-extrabold text-indigo-600 shrink-0 mt-0.5">
+                        2
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900">Manage Teams & Submissions</h4>
+                        <p className="text-xs text-slate-500 mt-1">
+                          As participants register and push code, you can inspect their team names, project bios, and live/GitHub repository links in **Manage Teams**.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3">
+                      <div className="w-6 h-6 rounded-full bg-indigo-50 border border-indigo-200 flex items-center justify-center text-xs font-extrabold text-indigo-600 shrink-0 mt-0.5">
+                        3
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900">Trigger Autonomous AI Grading</h4>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Trigger the bulk evaluator or click specific projects inside the Hackathon details page to analyze syntax trees, readme structures, and design aesthetics using Gemini.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="flex gap-3">
+                      <div className="w-6 h-6 rounded-full bg-indigo-50 border border-indigo-200 flex items-center justify-center text-xs font-extrabold text-indigo-600 shrink-0 mt-0.5">
+                        4
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900">Input Manual Jury Overrides</h4>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Review details of specific events and input manual organizer ratings across criteria (Idea, UI, Code) to complement the automated AI scoring.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3">
+                      <div className="w-6 h-6 rounded-full bg-indigo-50 border border-indigo-200 flex items-center justify-center text-xs font-extrabold text-indigo-600 shrink-0 mt-0.5">
+                        5
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900">Establish and Export Standings</h4>
+                        <p className="text-xs text-slate-500 mt-1">
+                          STANDARDIZED composite scores (40% AI, 60% manual) are generated in real-time. Head to the **Export Results** tab to download official standings to CSV.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3">
+                      <div className="w-6 h-6 rounded-full bg-indigo-50 border border-indigo-200 flex items-center justify-center text-xs font-extrabold text-indigo-600 shrink-0 mt-0.5">
+                        6
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-900">Issue Academic Credentials</h4>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Once rankings are locked, go to **Issue Awards / Certs** to create durable certificates with automated verification codes for participants to share on Vercel or LinkedIn.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quick Shortcuts */}
+                <div className="pt-6 border-t border-slate-100 flex flex-wrap gap-3">
+                  <button
+                    onClick={() => setSubTab("events")}
+                    className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold text-xs rounded-lg transition-all cursor-pointer"
+                  >
+                    Go to Events Setup
+                  </button>
+                  <button
+                    onClick={() => setSubTab("teams")}
+                    className="px-4 py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 font-semibold text-xs rounded-lg transition-all cursor-pointer"
+                  >
+                    Inspect Project Submissions
+                  </button>
+                  <button
+                    onClick={() => setSubTab("certs")}
+                    className="px-4 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 font-semibold text-xs rounded-lg transition-all cursor-pointer"
+                  >
+                    Issue Verification Badge
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {subTab === "roles" && (
             <div className="space-y-6">
               <h3 className="font-sans font-bold text-slate-900 text-lg border-b border-slate-100 pb-3">User Accounts Directory</h3>
@@ -994,56 +1293,177 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
             selectedHk ? (
               <div className="space-y-6 animate-fade-in">
                 {/* Back button */}
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <button
-                    onClick={() => setSelectedHk(null)}
+                    onClick={() => {
+                      setSelectedHk(null);
+                      setIsEditingHk(false);
+                    }}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold rounded-lg shadow-sm cursor-pointer text-slate-700"
                   >
                     <ArrowLeft className="w-4 h-4" />
                     Back to Hackathon Events
                   </button>
                   <div className="flex items-center gap-2">
+                    {!isEditingHk && (
+                      <button
+                        onClick={() => {
+                          setIsEditingHk(true);
+                          setEditHkName(selectedHk.name);
+                          setEditHkDesc(selectedHk.description);
+                          setEditHkStart(selectedHk.startDate);
+                          setEditHkEnd(selectedHk.endDate);
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold rounded-lg shadow-sm cursor-pointer"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                        Edit Event details
+                      </button>
+                    )}
                     <span className={`inline-flex px-2 py-0.5 rounded text-xs font-bold uppercase ${
-                      selectedHk.active ? "bg-indigo-100 text-indigo-800" : "bg-slate-100 text-slate-850"
+                      selectedHk.active ? "bg-indigo-100 text-indigo-800" : "bg-slate-100 text-slate-800"
                     }`}>
                       {selectedHk.active ? "Active" : "Inactive"}
                     </span>
                   </div>
                 </div>
 
-                {/* Event Details Card */}
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                  <div className="space-y-1">
-                    <h3 className="text-xl font-sans font-bold text-slate-900">{selectedHk.name}</h3>
-                    <p className="text-sm text-slate-600 max-w-xl">{selectedHk.description}</p>
-                    <p className="text-xs text-slate-400 font-mono">Event Timeline: {selectedHk.startDate} to {selectedHk.endDate}</p>
+                {/* Event Details Card or Inline Editor */}
+                {isEditingHk ? (
+                  <div className="bg-slate-50 border border-indigo-100 rounded-2xl p-6 space-y-4 animate-fade-in">
+                    <h4 className="text-sm font-bold text-slate-900 flex items-center gap-1">
+                      <Edit className="w-4 h-4 text-indigo-600" />
+                      Update Event Configuration
+                    </h4>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Event Name</label>
+                        <input
+                          type="text"
+                          value={editHkName}
+                          onChange={(e) => setEditHkName(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs shadow-sm bg-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Description</label>
+                        <textarea
+                          rows={2}
+                          value={editHkDesc}
+                          onChange={(e) => setEditHkDesc(e.target.value)}
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs shadow-sm bg-white"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Start Date</label>
+                          <input
+                            type="date"
+                            value={editHkStart}
+                            onChange={(e) => setEditHkStart(e.target.value)}
+                            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs shadow-sm bg-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">End Date</label>
+                          <input
+                            type="date"
+                            value={editHkEnd}
+                            onChange={(e) => setEditHkEnd(e.target.value)}
+                            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs shadow-sm bg-white"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 pt-2">
+                      <button
+                        onClick={() => handleUpdateHackathon(selectedHk.id, {
+                          name: editHkName,
+                          description: editHkDesc,
+                          startDate: editHkStart,
+                          endDate: editHkEnd
+                        })}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold cursor-pointer"
+                      >
+                        Save Configuration
+                      </button>
+                      <button
+                        onClick={() => setIsEditingHk(false)}
+                        className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-bold cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   </div>
+                ) : (
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                    <div className="space-y-1">
+                      <h3 className="text-xl font-sans font-bold text-slate-900">{selectedHk.name}</h3>
+                      <p className="text-sm text-slate-600 max-w-xl">{selectedHk.description}</p>
+                      <p className="text-xs text-slate-400 font-mono">Timeline: {selectedHk.startDate} to {selectedHk.endDate}</p>
+                    </div>
 
-                  {/* Mass AI Evaluation & Ranking for this event */}
-                  <button
-                    onClick={() => handleAnalyzeAndRank(selectedHk.id)}
-                    disabled={rankLoading}
-                    className="w-full md:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-xl font-bold text-sm shadow-md transition-all cursor-pointer shrink-0"
-                  >
-                    {rankLoading ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                        Analyzing & Ranking All Submissions...
-                      </>
-                    ) : (
-                      <>
-                        <Play className="w-4 h-4 fill-current" />
-                        Analyze and Rank All Submissions
-                      </>
-                    )}
-                  </button>
+                    {/* Mass AI Evaluation & Ranking for this event */}
+                    <button
+                      onClick={() => handleAnalyzeAndRank(selectedHk.id)}
+                      disabled={rankLoading}
+                      className="w-full md:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-xl font-bold text-sm shadow-md transition-all cursor-pointer shrink-0"
+                    >
+                      {rankLoading ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          Ranking All submissions...
+                        </>
+                      ) : (
+                        <>
+                          <Play className="w-4 h-4 fill-current" />
+                          Run Autonomous Grading & Rankings
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {/* Event Performance Stats row */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="border border-slate-200 rounded-xl p-4 bg-white text-center">
+                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Submissions</div>
+                    <div className="text-xl font-extrabold text-slate-900 mt-0.5">
+                      {projects.filter(p => p.hackathonId === selectedHk.id).length}
+                    </div>
+                  </div>
+                  <div className="border border-slate-200 rounded-xl p-4 bg-white text-center">
+                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Graded</div>
+                    <div className="text-xl font-extrabold text-emerald-600 mt-0.5">
+                      {projects.filter(p => p.hackathonId === selectedHk.id && p.status === "evaluated").length}
+                    </div>
+                  </div>
+                  <div className="border border-slate-200 rounded-xl p-4 bg-white text-center">
+                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Avg Score</div>
+                    <div className="text-xl font-extrabold text-indigo-600 mt-0.5">
+                      {(() => {
+                        const graded = hkLeaderboard.filter(item => item.aiOverallScore !== null);
+                        if (graded.length === 0) return "Pending";
+                        const sum = graded.reduce((acc, curr) => acc + curr.aiOverallScore, 0);
+                        return (sum / graded.length).toFixed(1) + " /100";
+                      })()}
+                    </div>
+                  </div>
+                  <div className="border border-slate-200 rounded-xl p-4 bg-white text-center">
+                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Top Standing</div>
+                    <div className="text-xs font-bold text-indigo-700 mt-1 line-clamp-1">
+                      {hkLeaderboard.length > 0 && hkLeaderboard[0].aiOverallScore !== null 
+                        ? `${hkLeaderboard[0].projectName} (${hkLeaderboard[0].combinedScore})` 
+                        : "Pending"}
+                    </div>
+                  </div>
                 </div>
 
                 {/* Submissions Section */}
                 <div className="space-y-4">
                   <div className="flex justify-between items-center border-b border-slate-100 pb-2">
                     <h4 className="font-sans font-bold text-slate-900 text-md">
-                      Submissions for this Event ({projects.filter(p => p.hackathonId === selectedHk.id).length})
+                      Registrations & Submissions ({projects.filter(p => p.hackathonId === selectedHk.id).length})
                     </h4>
                   </div>
 
@@ -1071,41 +1491,238 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                           const fullProj = projects.find(p => p.id === item.projectId);
                           const isEvaluated = item.aiOverallScore !== null;
                           return (
-                            <div key={item.projectId} className="bg-white border border-slate-200 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:shadow-sm transition-all">
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-2">
-                                  <h5 className="font-bold text-slate-900 text-sm">{item.projectName}</h5>
-                                  <span className={`inline-flex px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase ${
-                                    isEvaluated ? "bg-emerald-50 text-emerald-700 border border-emerald-100" : "bg-amber-50 text-amber-700 border border-amber-100"
-                                  }`}>
-                                    {isEvaluated ? "Scored & Ranked" : "Pending Evaluation"}
-                                  </span>
-                                </div>
-                                <p className="text-xs text-slate-600 font-medium">Team Name: <span className="font-bold text-slate-800">{item.teamName}</span></p>
-                                {fullProj?.description && (
-                                  <p className="text-xs text-slate-500 line-clamp-1">{fullProj.description}</p>
-                                )}
-                                {fullProj?.githubUrl && (
-                                  <div className="text-[10px] text-slate-400 font-mono">
-                                    GitHub: <a href={fullProj.githubUrl} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">{fullProj.githubUrl}</a>
+                            <div key={item.projectId} className="bg-white border border-slate-200 rounded-xl p-5 flex flex-col gap-4 hover:shadow-sm transition-all">
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                <div className="space-y-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <h5 className="font-bold text-slate-900 text-sm">{item.projectName}</h5>
+                                    <span className={`inline-flex px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase ${
+                                      isEvaluated ? "bg-emerald-50 text-emerald-700 border border-emerald-100" : "bg-amber-50 text-amber-700 border border-amber-100"
+                                    }`}>
+                                      {isEvaluated ? "Scored & Ranked" : "Pending Evaluation"}
+                                    </span>
                                   </div>
-                                )}
+                                  <p className="text-xs text-slate-600 font-medium">Team Name: <span className="font-bold text-slate-800">{item.teamName}</span></p>
+                                  {fullProj?.description && (
+                                    <p className="text-xs text-slate-500 line-clamp-1">{fullProj.description}</p>
+                                  )}
+                                  {fullProj?.githubUrl && (
+                                    <div className="text-[10px] text-slate-400 font-mono">
+                                      GitHub: <a href={fullProj.githubUrl} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">{fullProj.githubUrl}</a>
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-6 shrink-0 justify-between sm:justify-end">
+                                  {isEvaluated ? (
+                                    <div className="text-left sm:text-right">
+                                      <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Composite Standing</div>
+                                      <div className="text-lg font-sans font-extrabold text-indigo-600">Rank #{item.rank}</div>
+                                      <div className="text-[10px] text-slate-500 font-medium">Combined Score: {item.combinedScore}/100</div>
+                                      {item.judgeAverageScore !== null && (
+                                        <div className="text-[9px] text-slate-400 font-semibold">Jury average: {item.judgeAverageScore}</div>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <div className="text-left sm:text-right">
+                                      <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Composite Standing</div>
+                                      <div className="text-lg font-sans font-extrabold text-slate-400">-</div>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
 
-                              <div className="flex items-center gap-6 shrink-0">
-                                {isEvaluated ? (
-                                  <div className="text-right">
-                                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Composite Placement</div>
-                                    <div className="text-lg font-sans font-extrabold text-indigo-600">Rank #{item.rank}</div>
-                                    <div className="text-[10px] text-slate-500 font-medium">Score: {item.aiOverallScore}/100</div>
-                                  </div>
-                                ) : (
-                                  <div className="text-right">
-                                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Composite Placement</div>
-                                    <div className="text-lg font-sans font-extrabold text-slate-400">-</div>
-                                  </div>
-                                )}
+                              {/* Administration Shortcuts for each project */}
+                              <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <button
+                                    onClick={() => handleSingleAIEvaluation(item.projectId)}
+                                    disabled={singleEvalLoadingId === item.projectId}
+                                    className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-md flex items-center gap-1 cursor-pointer transition-colors"
+                                  >
+                                    <RefreshCw className={`w-3.5 h-3.5 ${singleEvalLoadingId === item.projectId ? "animate-spin" : ""}`} />
+                                    Run AI Grade
+                                  </button>
+                                  
+                                  <button
+                                    onClick={() => {
+                                      if (reviewingProjId === item.projectId) {
+                                        setReviewingProjId(null);
+                                      } else {
+                                        setReviewingProjId(item.projectId);
+                                        setReviewIdea(80);
+                                        setReviewInnovation(80);
+                                        setReviewCodeQuality(80);
+                                        setReviewReadme(80);
+                                        setReviewUi(80);
+                                        setReviewAiUsage(80);
+                                        setReviewTechnical(80);
+                                        setReviewFeedback("");
+                                      }
+                                    }}
+                                    className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-md flex items-center gap-1 cursor-pointer transition-colors"
+                                  >
+                                    <Edit className="w-3.5 h-3.5" />
+                                    {reviewingProjId === item.projectId ? "Cancel Review" : "Submit Jury Scorecard"}
+                                  </button>
+                                </div>
+
+                                <div>
+                                  {confirmDeleteProjId === item.projectId ? (
+                                    <div className="flex items-center gap-1 bg-rose-50 border border-rose-200 rounded px-1.5 py-1">
+                                      <span className="text-[10px] text-rose-700 font-bold">Remove team?</span>
+                                      <button
+                                        onClick={() => handleDeleteProject(item.projectId)}
+                                        className="bg-rose-600 text-white px-1.5 py-0.5 rounded text-[10px] cursor-pointer"
+                                      >
+                                        Yes
+                                      </button>
+                                      <button
+                                        onClick={() => setConfirmDeleteProjId(null)}
+                                        className="bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded text-[10px] cursor-pointer"
+                                      >
+                                        No
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      onClick={() => setConfirmDeleteProjId(item.projectId)}
+                                      className="text-rose-600 hover:text-rose-800 font-bold flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <Trash className="w-3.5 h-3.5" />
+                                      Remove Submission
+                                    </button>
+                                  )}
+                                </div>
                               </div>
+
+                              {/* Manual scoring card expandable block */}
+                              {reviewingProjId === item.projectId && (
+                                <div className="bg-slate-50 border border-emerald-100 rounded-xl p-4 sm:p-5 space-y-4 animate-fade-in mt-2">
+                                  <h6 className="text-xs font-bold text-slate-900 flex items-center gap-1 uppercase tracking-wider">
+                                    <Shield className="w-4 h-4 text-emerald-600" />
+                                    Manual Jury Evaluation - {item.projectName}
+                                  </h6>
+
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                                    <div className="space-y-3">
+                                      <div>
+                                        <div className="flex justify-between mb-1">
+                                          <span className="font-semibold text-slate-700">Idea / Concept alignment</span>
+                                          <span className="font-bold text-slate-950">{reviewIdea}/100</span>
+                                        </div>
+                                        <input
+                                          type="range" min="0" max="100" step="5"
+                                          value={reviewIdea}
+                                          onChange={(e) => setReviewIdea(Number(e.target.value))}
+                                          className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                                        />
+                                      </div>
+
+                                      <div>
+                                        <div className="flex justify-between mb-1">
+                                          <span className="font-semibold text-slate-700">Innovation & Uniqueness</span>
+                                          <span className="font-bold text-slate-950">{reviewInnovation}/100</span>
+                                        </div>
+                                        <input
+                                          type="range" min="0" max="100" step="5"
+                                          value={reviewInnovation}
+                                          onChange={(e) => setReviewInnovation(Number(e.target.value))}
+                                          className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                                        />
+                                      </div>
+
+                                      <div>
+                                        <div className="flex justify-between mb-1">
+                                          <span className="font-semibold text-slate-700">Source Code Quality</span>
+                                          <span className="font-bold text-slate-950">{reviewCodeQuality}/100</span>
+                                        </div>
+                                        <input
+                                          type="range" min="0" max="100" step="5"
+                                          value={reviewCodeQuality}
+                                          onChange={(e) => setReviewCodeQuality(Number(e.target.value))}
+                                          className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                                        />
+                                      </div>
+
+                                      <div>
+                                        <div className="flex justify-between mb-1">
+                                          <span className="font-semibold text-slate-700">Documentation & README readability</span>
+                                          <span className="font-bold text-slate-950">{reviewReadme}/100</span>
+                                        </div>
+                                        <input
+                                          type="range" min="0" max="100" step="5"
+                                          value={reviewReadme}
+                                          onChange={(e) => setReviewReadme(Number(e.target.value))}
+                                          className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                                        />
+                                      </div>
+                                    </div>
+
+                                    <div className="space-y-3">
+                                      <div>
+                                        <div className="flex justify-between mb-1">
+                                          <span className="font-semibold text-slate-700">Design Aesthetic & UI/UX flow</span>
+                                          <span className="font-bold text-slate-950">{reviewUi}/100</span>
+                                        </div>
+                                        <input
+                                          type="range" min="0" max="100" step="5"
+                                          value={reviewUi}
+                                          onChange={(e) => setReviewUi(Number(e.target.value))}
+                                          className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                                        />
+                                      </div>
+
+                                      <div>
+                                        <div className="flex justify-between mb-1">
+                                          <span className="font-semibold text-slate-700">AI Tooling implementation</span>
+                                          <span className="font-bold text-slate-950">{reviewAiUsage}/100</span>
+                                        </div>
+                                        <input
+                                          type="range" min="0" max="100" step="5"
+                                          value={reviewAiUsage}
+                                          onChange={(e) => setReviewAiUsage(Number(e.target.value))}
+                                          className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                                        />
+                                      </div>
+
+                                      <div>
+                                        <div className="flex justify-between mb-1">
+                                          <span className="font-semibold text-slate-700">Technical Depth & Complexity</span>
+                                          <span className="font-bold text-slate-950">{reviewTechnical}/100</span>
+                                        </div>
+                                        <input
+                                          type="range" min="0" max="100" step="5"
+                                          value={reviewTechnical}
+                                          onChange={(e) => setReviewTechnical(Number(e.target.value))}
+                                          className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
+                                        />
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="space-y-1 pt-1 text-xs">
+                                    <label className="block font-bold text-slate-700">Manual Feedback / Recommendations</label>
+                                    <textarea
+                                      required rows={2}
+                                      value={reviewFeedback}
+                                      onChange={(e) => setReviewFeedback(e.target.value)}
+                                      placeholder="Write specific critiques or jury notes..."
+                                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none bg-white text-xs"
+                                    />
+                                  </div>
+
+                                  <div className="flex justify-end gap-2 pt-1">
+                                    <button
+                                      onClick={() => handleScoreProject(item.projectId)}
+                                      disabled={!reviewFeedback.trim()}
+                                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold cursor-pointer transition-colors"
+                                    >
+                                      Submit Grade
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           );
                         })}

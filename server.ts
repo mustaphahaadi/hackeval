@@ -217,8 +217,9 @@ app.get("/api/auth/me", authenticateToken, (req: AuthRequest, res: Response) => 
 // --- SUBMISSION APIs ---
 
 // GET /projects
-app.get("/api/projects", optionalAuthenticateToken, (req: AuthRequest, res: Response) => {
+app.get("/api/projects", optionalAuthenticateToken, async (req: AuthRequest, res: Response) => {
   try {
+    await db.refreshCollection("projects");
     const projects = db.getProjects();
     res.json(projects);
   } catch (error: any) {
@@ -227,8 +228,15 @@ app.get("/api/projects", optionalAuthenticateToken, (req: AuthRequest, res: Resp
 });
 
 // GET /projects/{id}
-app.get("/api/projects/:id", optionalAuthenticateToken, (req: AuthRequest, res: Response) => {
+app.get("/api/projects/:id", optionalAuthenticateToken, async (req: AuthRequest, res: Response) => {
   try {
+    await Promise.all([
+      db.refreshCollection("projects"),
+      db.refreshCollection("aiEvaluations"),
+      db.refreshCollection("judgeReviews"),
+      db.refreshCollection("githubAnalyses"),
+      db.refreshCollection("comments")
+    ]);
     const project = db.getProjects().find(p => p.id === req.params.id);
     if (!project) {
       res.status(404).json({ error: "Project submission not found." });
@@ -1338,8 +1346,13 @@ app.post("/api/reviews", authenticateToken, authorizeRoles("Admin"), async (req:
 // --- LEADERBOARD & STATS ---
 
 // GET /api/leaderboard
-app.get("/api/leaderboard", (req: Request, res: Response) => {
+app.get("/api/leaderboard", async (req: Request, res: Response) => {
   try {
+    await Promise.all([
+      db.refreshCollection("projects"),
+      db.refreshCollection("aiEvaluations"),
+      db.refreshCollection("judgeReviews")
+    ]);
     const hackathonId = req.query.hackathonId as string;
     const leaderboard = db.getLeaderboard(hackathonId);
     res.json(leaderboard);
@@ -1507,8 +1520,9 @@ User's query: "${query}"`;
 // --- ADMIN APIs ---
 
 // GET /api/admin/users
-app.get("/api/admin/users", authenticateToken, authorizeRoles("Admin"), (req: Request, res: Response) => {
+app.get("/api/admin/users", authenticateToken, authorizeRoles("Admin"), async (req: Request, res: Response) => {
   try {
+    await db.refreshCollection("users");
     // Return sanitized users list
     const users = db.getUsers().map(u => ({
       id: u.id,
@@ -1580,8 +1594,9 @@ app.post("/api/admin/certificates", authenticateToken, authorizeRoles("Admin"), 
 });
 
 // GET /api/certificates
-app.get("/api/certificates", optionalAuthenticateToken, (req: AuthRequest, res: Response) => {
+app.get("/api/certificates", optionalAuthenticateToken, async (req: AuthRequest, res: Response) => {
   try {
+    await db.refreshCollection("certificates");
     let list = db.getCertificates();
     // Non-admins can only see their own certificates
     if (req.user?.role !== "Admin") {
@@ -1781,8 +1796,13 @@ app.post("/api/analyze-website", authenticateToken, async (req: Request, res: Re
 
 
 // HACKATHON EVENT MGMT
-app.get("/api/hackathons", (req: Request, res: Response) => {
-  res.json(db.getHackathons());
+app.get("/api/hackathons", async (req: Request, res: Response) => {
+  try {
+    await db.refreshCollection("hackathons");
+    res.json(db.getHackathons());
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.post("/api/hackathons", optionalAuthenticateToken, async (req: Request, res: Response) => {

@@ -43,6 +43,7 @@ Once authenticated, your central workspace focuses on the **Project Submission F
 
 ### Complete the Following Submission Fields:
 
+*   **Select Hackathon Event:** Select which active hackathon event you are entering your submission into from the dropdown list.
 *   **Project Title:** Give your innovation a descriptive, clear name.
 *   **Team Name:** The name of your hackathon group.
 *   **Team Members:** Enter comma-separated full names of all members (e.g. `Jane Doe, John Smith`) to guarantee correct academic certificate listings.
@@ -66,16 +67,17 @@ To provide the AI evaluator with detailed visual workflows or architectural sche
 
 ---
 
-## 📊 Step 4: Tracking Scorecards and Placement Ranks
+## 📊 Step 4: Tracking Scorecards, Overrides, and Placement Ranks
 
-As soon as your project is registered, your team dashboard moves into **Evaluation Review State**. Here is how to understand your scorecards:
+As soon as your project is registered, your team dashboard moves into **Evaluation Review State**. On the main catalog or leaderboard tab, you can inspect your live standing. Here is how to understand your scoring:
 
-### 1. The Timeline Indicators:
-*   `Pending Evaluation`: Your project is queued, awaiting the admin to trigger the automated AI evaluation engine.
-*   `Scored`: The AI grading is finalized. You will see detailed subscores on your dashboard.
+### 1. The Dynamic Composite Score
+Your final standing is computed dynamically as a weighted combination:
+-   **AI Evaluation Score (40% weight):** Assessed autonomously by Google Gemini.
+-   **Jury Average Score (60% weight):** Average of manual reviews submitted by professional judges/organizers.
 
-### 2. Metric Scorecards [0 - 100]:
-Your project is evaluated across 7 key pillars:
+### 2. Metric Scorecards [0 - 100]
+Both AI audits and manual scorecards rate your work on 7 key pillars:
 1.  **Idea Validity:** Feasibility of the solution.
 2.  **Innovation:** Novelty and unique approach.
 3.  **Code Quality:** Repository layout, commenting style, file modularity.
@@ -84,5 +86,16 @@ Your project is evaluated across 7 key pillars:
 6.  **AI Model Utilization:** Depth of smart API embeddings or model usages.
 7.  **Technical Complexity:** General engineering depth and scale.
 
-### 3. Feedback:
-Scroll down to read the comprehensive, structured written feedback compiled by the automated Google Gemini static evaluator, offering detailed technical recommendations and critique.
+### 3. Qualitative Written Feedback
+Scroll down inside your team dashboard to read the comprehensive, structured critique compiled by the automated Google Gemini static evaluator, offering detailed technical recommendations, and any manual critiques added by judges.
+
+---
+
+## 🎓 Step 5: Claiming Verifiable Academic Certificates
+
+Once organizers lock the standings, they can issue digital certificates with unique cryptographic tracking codes to participants:
+
+1.  Click the **Verifiable Credentials Ledger** tab in the main navigation.
+2.  Browse the ledger directory or enter your **recipient email** or **unique verification code** in the search field to retrieve your certificate.
+3.  Click on your certificate card to view the official details (Project Name, Team Name, Recipient Name, and Award Role: e.g. `First Place`, `Second Place`, `Third Place`, `Best AI Integration`, `Outstanding Finalist`, or `Completion`).
+4.  Copy the secure link to showcase your digital achievement directly on LinkedIn, resume profiles, or portfolios!

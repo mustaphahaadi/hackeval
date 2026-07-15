@@ -146,8 +146,8 @@ class LocalDB {
     if (!dbFirestore) return;
 
     const now = Date.now();
-    // Throttle refresh to once every 2 seconds to avoid excessive reads
-    if (!force && now - this.lastRefreshTime < 2000) {
+    // Throttle refresh to once every 5 seconds to avoid excessive reads
+    if (!force && now - this.lastRefreshTime < 5000) {
       return;
     }
 
@@ -167,9 +167,7 @@ class LocalDB {
             });
             this.state[colName as keyof DBState] = docs;
           } else {
-            if (!this.state[colName as keyof DBState]) {
-              this.state[colName as keyof DBState] = [];
-            }
+            this.state[colName as keyof DBState] = [];
           }
         } catch (colErr) {
           console.error(`Failed to refresh collection ${colName}:`, colErr);
@@ -179,6 +177,24 @@ class LocalDB {
       this.lastRefreshTime = Date.now();
     } catch (err) {
       console.error("Error during DB refresh:", err);
+    }
+  }
+
+  async refreshCollection(colName: keyof DBState): Promise<void> {
+    if (!dbFirestore) return;
+    try {
+      const querySnapshot = await withTimeout(getDocs(collection(dbFirestore, colName)), 4000, `refresh single collection ${colName}`);
+      if (!querySnapshot.empty) {
+        const docs: any[] = [];
+        querySnapshot.forEach((d) => {
+          docs.push({ id: d.id, ...d.data() });
+        });
+        this.state[colName] = docs as any;
+      } else {
+        this.state[colName] = [];
+      }
+    } catch (err) {
+      console.error(`Failed to refresh individual collection ${colName}:`, err);
     }
   }
 

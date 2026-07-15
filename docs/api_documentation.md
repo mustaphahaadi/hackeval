@@ -206,3 +206,110 @@ Promotes or demotes user accounts inside the permission tables.
       "message": "User role updated successfully."
     }
     ```
+
+### 2. Submit Manual Jury Scorecard
+Allows an administrator/judge to submit a manual score override for a project submission.
+*   **Method:** `POST`
+*   **Path:** `/api/reviews`
+*   **Headers:**
+    *   `Authorization: Bearer <JWT_TOKEN>` (Must be role: `Admin`)
+*   **Request Body:**
+    ```json
+    {
+      "projectId": "proj_9ab712e0",
+      "scores": {
+        "idea": 85,
+        "innovation": 90,
+        "codeQuality": 80,
+        "readme": 95,
+        "ui": 88,
+        "aiUsage": 82,
+        "technical": 86
+      },
+      "feedback": "Outstanding implementation of the core AI pipeline, and very structured repo documentation."
+    }
+    ```
+*   **Response (201 Created):**
+    ```json
+    {
+      "id": "rev_3bf910d5",
+      "projectId": "proj_9ab712e0",
+      "judgeId": "usr_7ecf1489",
+      "judgeName": "Dr. Susan Vance",
+      "scores": {
+        "idea": 85,
+        "innovation": 90,
+        "codeQuality": 80,
+        "readme": 95,
+        "ui": 88,
+        "aiUsage": 82,
+        "technical": 86
+      },
+      "overallScore": 86.6,
+      "feedback": "Outstanding implementation of the core AI pipeline, and very structured repo documentation.",
+      "createdAt": "2026-07-15T12:00:00Z"
+    }
+    ```
+
+### 3. Issue Verifiable Award Certificate
+Issues a cryptographically secure digital achievement award certificate to a student.
+*   **Method:** `POST`
+*   **Path:** `/api/admin/certificates`
+*   **Headers:**
+    *   `Authorization: Bearer <JWT_TOKEN>` (Must be role: `Admin`)
+*   **Request Body:**
+    ```json
+    {
+      "projectId": "proj_9ab712e0",
+      "recipientEmail": "jane.doe@university.edu",
+      "recipientName": "Jane Doe",
+      "role": "First Place"
+    }
+    ```
+*   **Response (201 Created):**
+    ```json
+    {
+      "id": "crt_00d418e2a3",
+      "projectId": "proj_9ab712e0",
+      "projectName": "EcoSphere: Intelligent Carbon Offset Router",
+      "teamName": "GreenEarth Devs",
+      "recipientEmail": "jane.doe@university.edu",
+      "recipientName": "Jane Doe",
+      "role": "First Place",
+      "issuedAt": "2026-07-15T12:15:30Z"
+    }
+    ```
+
+### 4. Retrieve Verifiable Award Credentials
+Retrieves all registered verifiable certificates issued under the platform.
+*   **Method:** `GET`
+*   **Path:** `/api/certificates`
+*   **Headers:** None (Public Access)
+*   **Response (200 OK):**
+    ```json
+    [
+      {
+        "id": "crt_00d418e2a3",
+        "projectId": "proj_9ab712e0",
+        "projectName": "EcoSphere: Intelligent Carbon Offset Router",
+        "teamName": "GreenEarth Devs",
+        "recipientEmail": "jane.doe@university.edu",
+        "recipientName": "Jane Doe",
+        "role": "First Place",
+        "issuedAt": "2026-07-15T12:15:30Z"
+      }
+    ]
+    ```
+
+### 5. Revoke Verifiable Achievement Certificate
+Removes/revokes a previously issued academic certificate from the ledger.
+*   **Method:** `DELETE`
+*   **Path:** `/api/certificates/:id`
+*   **Headers:**
+    *   `Authorization: Bearer <JWT_TOKEN>` (Must be role: `Admin`)
+*   **Response (200 OK):**
+    ```json
+    {
+      "message": "Academic award certificate revoked and removed successfully from the platform database."
+    }
+    ```

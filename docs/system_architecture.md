@@ -8,7 +8,9 @@ This document describes the technical architecture, database design, role access
 
 The platform uses a modular decoupled architecture where Express.js hosts both the backend JSON REST APIs and serves the compiled single-page React client (Vite middleware in development; direct static file server in production). 
 
-In the future state, the backend will be migrated to **FastAPI (Python)**, utilizing **PostgreSQL** as the durable database with **SQLAlchemy** as the ORM, maintaining the same clean, role-based boundary.
+A key highlight of the production build is the **Firebase Firestore Database** integration, which guarantees real-time, durable, cloud-synced storage for all operational and grading data. The backend `src/db.ts` wrapper establishes standard collections and caches records locally for ultra-fast, in-memory transactional processing, writing updates back to Firestore collections.
+
+In the future state, the backend can be migrated to **FastAPI (Python)**, utilizing **PostgreSQL** as the durable database with **SQLAlchemy** as the ORM, maintaining the same clean, role-based boundary.
 
 ```text
                +-------------------------------------------------+
@@ -26,9 +28,9 @@ In the future state, the backend will be migrated to **FastAPI (Python)**, utili
                    |                   |                     |
   +----------------v----+     +--------v-----------+     +---v-----------------+
   |      Database       |     |  Auth Middleware   |     |    Gemini Engine    |
-  | (Local JSON Storage |     |  (JWT Secret Verification |  | (@google/genai SDK  |
-  |  with relational    |     |  & Role-Based Guard) |  |   3.5 Flash Model)  |
-  |  integrity models)  |     +--------------------+     +---------------------+
+  | (Firebase Firestore  |     |  (JWT Secret Verification |  | (@google/genai SDK  |
+  |  Cloud persistent   |     |  & Role-Based Guard) |  |   3.5 Flash Model)  |
+  |  collections & sync)|     +--------------------+     +---------------------+
   +---------------------+
 ```
 
@@ -36,7 +38,7 @@ In the future state, the backend will be migrated to **FastAPI (Python)**, utili
 
 ## 🗄️ Database Schema & Data Models
 
-The database layer (`src/db.ts`) behaves as an ACID-compliant in-memory transactional database, writing state updates to local files to maintain persistence across container restarts. The schemas perfectly map relational databases like PostgreSQL (SQLAlchemy syntax).
+The database layer (`src/db.ts`) acts as a wrapper over **Firebase Firestore** with on-demand local collection synchronization. Let's inspect the main schemas mapping to Firestore collections.
 
 ### 1. `User` Schema
 Tracks platform participants and admins (hackathon owners).
@@ -56,6 +58,7 @@ Captures team code, pitches, and evaluation state.
 interface ProjectSubmission {
   id: string;             // Primary Key
   userId: string;         // Foreign Key -> User.id
+  hackathonId: string;    // Foreign Key -> HackathonEvent.id
   projectName: string;
   teamName: string;
   teamMembers: string;    // Comma-separated names
@@ -103,6 +106,44 @@ interface HackathonEvent {
 }
 ```
 
+### 5. `JudgeReview` Schema
+Captures manual scorecard submissions from professional jury panel members.
+```typescript
+interface JudgeReview {
+  id: string;
+  projectId: string;      // Foreign Key -> ProjectSubmission.id
+  judgeId: string;        // Foreign Key -> User.id
+  judgeName: string;
+  scores: {
+    idea: number;         // Concept validity [0-100]
+    innovation: number;   // Originality [0-100]
+    codeQuality: number;  // Review of repository [0-100]
+    readme: number;       // Documentation structure [0-100]
+    ui: number;           // Visual design system [0-100]
+    aiUsage: number;      // API embeddings [0-100]
+    technical: number;    // Engineering depth [0-100]
+  };
+  overallScore: number;   // Arithmetic mean of review scores [0-100]
+  feedback: string;       // Custom notes or critique
+  createdAt: string;
+}
+```
+
+### 6. `Certificate` Schema
+Durable academic credentials awarded upon locking hackathon standings.
+```typescript
+interface Certificate {
+  id: string;             // Unique Verification Code
+  projectId: string;      // Foreign Key -> ProjectSubmission.id
+  projectName: string;
+  teamName: string;
+  recipientEmail: string;
+  recipientName: string;
+  role: "First Place" | "Second Place" | "Third Place" | "Best AI Integration" | "Outstanding Finalist" | "Completion";
+  issuedAt: string;
+}
+```
+
 ---
 
 ## 🔒 Security & RBAC Model
@@ -117,6 +158,10 @@ The platform enforces strict **Role-Based Access Control (RBAC)** on all JSON en
 | `POST /api/projects` | `Participant`, `Admin` | Submits a new project |
 | `POST /api/evaluate/:project_id` | `Admin` | Dispatches the Gemini API review pipeline for a project |
 | `POST /api/evaluate-all` | `Admin` | Dispatches bulk AI evaluation over all submitted projects |
+| `POST /api/reviews` | `Admin` | Submits manual organizer/jury scorecard and scores for a project |
+| `POST /api/admin/certificates` | `Admin` | Issues durable academic achievement awards/certificates |
+| `GET /api/certificates` | Public | Fetches issued verifiably secure hackathon award certificates |
+| `DELETE /api/certificates/:id`| `Admin` | Revokes/removes issued academic award credentials |
 | `POST /api/ai-judge-assistant` | `Admin` | Queries the dynamic evaluation oracle chatbot (Admin Assistant) |
 | `GET /api/admin/users` | `Admin` | Fetches high-level user permissions table |
 | `PUT /api/admin/users/:userId/role`| `Admin` | Elevates or demotes user access roles |
@@ -145,11 +190,12 @@ Accessible from the Admin Leaderboard chat.
 
 ## 📐 Scoring & Placement Algorithm
 
-The official grand-prize rankings are computed dynamically directly from the **AI Overall Score**:
+The platform enforces a standardized combined ranking policy integrating automated Gemini audit diagnostics and manual judge overrides:
 
-$$\text{Leaderboard Ranking} = f(\text{AI Overall Score})$$
+$$\text{Combined Score} = (0.4 \times \text{AI Overall Score}) + (0.6 \times \text{Jury Average Score})$$
 
 Where:
-*   $\text{AI Overall Score}$ is the arithmetic mean of the 7 metrics generated by the Gemini model.
-*   Tiebreakers are resolved based on technical sophistication, code quality, and innovation sub-scores.
-*   Projects without scores are styled as "Pending AI" and placed at the bottom of the board to preserve ranking integrity.
+*   **AI Overall Score (40% weight):** Calculated as the arithmetic mean of the 7 metrics produced by Google Gemini.
+*   **Jury Average Score (60% weight):** Calculated as the arithmetic average of manual scores submitted by the organizer/jury panel.
+*   **Fallback Resolution:** If a project only has an AI score, the combined score equals the AI score. If it only has jury scores, it equals the jury average. If both exist, the 40/60 weighted split applies.
+*   Projects without any scores remain marked as "Pending" and appear at the bottom of the board to preserve ranking consistency. Tiebreakers can be settled using the technical complexity or innovation criteria.

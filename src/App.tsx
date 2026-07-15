@@ -9,7 +9,7 @@ import { ProjectSubmissionForm } from "./components/ProjectSubmissionForm.js";
 import { HackathonDetailView } from "./components/HackathonDetailView.js";
 
 import { 
-  FolderGit, Eye, Search, Plus, Award, 
+  FolderGit, Eye, Search, Plus, Award, Shield,
   Sparkles, Star, Calendar, RefreshCw, BarChart2 
 } from "lucide-react";
 
@@ -274,8 +274,26 @@ export default function App() {
               </div>
             )}
 
-            {currentTab === "admin" && user && user.role === "Admin" && (
-              <AdminDashboard token={token || ""} />
+            {currentTab === "admin" && (
+              user && user.role === "Admin" ? (
+                <AdminDashboard token={token || ""} />
+              ) : (
+                <div className="max-w-md mx-auto bg-white border border-slate-200 rounded-2xl p-8 text-center space-y-4 shadow-sm animate-fade-in mt-8">
+                  <Shield className="w-12 h-12 text-rose-500 mx-auto" />
+                  <h3 className="text-lg font-sans font-bold text-slate-900">Administrator Access Required</h3>
+                  <p className="text-slate-500 text-sm">
+                    The requested management interface is protected. Please sign in with an Organizer or Administrator account to access the control panel.
+                  </p>
+                  <button
+                    onClick={() => {
+                      setCurrentTab("login");
+                    }}
+                    className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl text-xs transition-all cursor-pointer"
+                  >
+                    Go to Admin Portal Login
+                  </button>
+                </div>
+              )
             )}
           </>
         )}
