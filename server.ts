@@ -1598,10 +1598,13 @@ app.get("/api/certificates", optionalAuthenticateToken, async (req: AuthRequest,
   try {
     await db.refreshCollection("certificates");
     let list = db.getCertificates();
-    // Non-admins can only see their own certificates
+    // Non-admins can only see their own certificates or query by specific verification code
     if (req.user?.role !== "Admin") {
+      const code = req.query.code as string;
       const email = req.user?.email || (req.query.email as string);
-      if (email) {
+      if (code) {
+        list = list.filter(c => c.certificateCode.toUpperCase() === code.toUpperCase());
+      } else if (email) {
         list = list.filter(c => c.recipientEmail.toLowerCase() === email.toLowerCase());
       } else {
         list = [];

@@ -7,6 +7,7 @@ import { AnalyticsReport } from "./components/AnalyticsReport.js";
 import { ProjectDetailView } from "./components/ProjectDetailView.js";
 import { ProjectSubmissionForm } from "./components/ProjectSubmissionForm.js";
 import { HackathonDetailView } from "./components/HackathonDetailView.js";
+import { CredentialsLedger } from "./components/CredentialsLedger.js";
 
 import { 
   FolderGit, Eye, Search, Plus, Award, Shield,
@@ -87,6 +88,15 @@ export default function App() {
     fetchProjectsList();
     fetchHackathonsList();
   }, [token]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get("tab");
+    const codeParam = params.get("code") || params.get("cert");
+    if (tabParam === "ledger" || codeParam) {
+      setCurrentTab("ledger");
+    }
+  }, []);
 
   // Handle detailed sub-view
   const handleSelectProject = (projectId: string) => {
@@ -265,6 +275,12 @@ export default function App() {
                     }}
                   />
                 </div>
+              </div>
+            )}
+
+            {currentTab === "ledger" && (
+              <div className="space-y-8 animate-fade-in">
+                <CredentialsLedger token={token} />
               </div>
             )}
 

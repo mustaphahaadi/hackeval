@@ -51,6 +51,17 @@ export function Navbar({ user, currentTab, onChangeTab, onLogout }: NavbarProps)
               <FolderGit className="w-4 h-4" /> All Hackathons
             </button>
 
+            <button
+              onClick={() => onChangeTab("ledger")}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+                currentTab === "ledger"
+                  ? "bg-indigo-50 text-indigo-700"
+                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+              }`}
+            >
+              <UserCheck className="w-4 h-4" /> Credentials Ledger
+            </button>
+
             {/* Public Submit Project Button */}
             {(!user || user.role !== "Admin") && (
               <button
@@ -138,6 +149,14 @@ export function Navbar({ user, currentTab, onChangeTab, onLogout }: NavbarProps)
           }`}
         >
           All Hackathons
+        </button>
+        <button
+          onClick={() => onChangeTab("ledger")}
+          className={`flex-1 text-center py-2.5 text-xs font-semibold ${
+            currentTab === "ledger" ? "text-indigo-600 bg-indigo-50/50" : "text-slate-600"
+          }`}
+        >
+          Ledger
         </button>
 
         {(!user || user.role !== "Admin") && (
