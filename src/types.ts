@@ -1,4 +1,4 @@
-export type UserRole = "Admin" | "Participant";
+export type UserRole = "Admin" | "Judge" | "Participant";
 
 export interface User {
   id: string;
@@ -150,6 +150,7 @@ export interface Certificate {
   projectId: string;
   projectName: string;
   teamName: string;
+  hackathonName?: string;
   recipientEmail: string;
   recipientName: string;
   role: string; // e.g. "Winner", "Runner-up", "Participant"

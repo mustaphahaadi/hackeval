@@ -1,22 +1,35 @@
 import React, { useState, useEffect } from "react";
-import { Shield, Users, Award, Calendar, RefreshCw, AlertCircle, Plus, Check, Trash, Power, Download, Edit, Save, X, Search, FolderGit, ArrowLeft, Play, BarChart2, Eye } from "lucide-react";
-import { User, HackathonEvent, ProjectSubmission } from "../types";
+import { Shield, Users, Award, Calendar, RefreshCw, AlertCircle, Check, Trash, Power, Download, Edit, Save, Search, FolderGit, ArrowLeft, Play, BarChart2, Eye, FileDown, UserPlus } from "lucide-react";
+import { User, HackathonEvent, ProjectSubmission, Certificate } from "../types";
 import { CertificateModal } from "./CertificateModal.js";
+import { downloadCertificatePdf } from "../utils/certificateGenerator.js";
 
 interface AdminDashboardProps {
   token: string;
 }
 
+const safeExternalUrl = (url?: string): string | null => {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url.trim());
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed.toString() : null;
+  } catch {
+    return null;
+  }
+};
+
 export function AdminDashboard({ token }: AdminDashboardProps) {
   const [users, setUsers] = useState<User[]>([]);
   const [hackathons, setHackathons] = useState<HackathonEvent[]>([]);
   const [projects, setProjects] = useState<ProjectSubmission[]>([]);
-  const [certificates, setCertificates] = useState<any[]>([]);
-  
-  // Certificate viewer states
-  const [selectedCertificate, setSelectedCertificate] = useState<any | null>(null);
+  const [certificates, setCertificates] = useState<Certificate[]>([]);
+
+  // Certificate viewer & export states
+  const [selectedCertificate, setSelectedCertificate] = useState<Certificate | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  
+  const [newlyIssuedCert, setNewlyIssuedCert] = useState<Certificate | null>(null);
+  const [downloadingCertId, setDownloadingCertId] = useState<string | null>(null);
+
   const [subTab, setSubTab] = useState<"overview" | "roles" | "teams" | "certs" | "events" | "export">("overview");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -27,17 +40,17 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
   const [confirmDeleteHkId, setConfirmDeleteHkId] = useState<string | null>(null);
   const [confirmDeleteCertId, setConfirmDeleteCertId] = useState<string | null>(null);
 
-  // Specific Project manual scoring states
+  // Specific Project manual scoring states (0-100 scale, default 80)
   const [reviewingProjId, setReviewingProjId] = useState<string | null>(null);
-  const [reviewIdea, setReviewIdea] = useState(8);
-  const [reviewInnovation, setReviewInnovation] = useState(8);
-  const [reviewCodeQuality, setReviewCodeQuality] = useState(8);
-  const [reviewReadme, setReviewReadme] = useState(8);
-  const [reviewUi, setReviewUi] = useState(8);
-  const [reviewAiUsage, setReviewAiUsage] = useState(8);
-  const [reviewTechnical, setReviewTechnical] = useState(8);
+  const [reviewIdea, setReviewIdea] = useState(80);
+  const [reviewInnovation, setReviewInnovation] = useState(80);
+  const [reviewCodeQuality, setReviewCodeQuality] = useState(80);
+  const [reviewReadme, setReviewReadme] = useState(80);
+  const [reviewUi, setReviewUi] = useState(80);
+  const [reviewAiUsage, setReviewAiUsage] = useState(80);
+  const [reviewTechnical, setReviewTechnical] = useState(80);
   const [reviewFeedback, setReviewFeedback] = useState("");
-  
+
   // Specific Project single AI evaluation loading state
   const [singleEvalLoadingId, setSingleEvalLoadingId] = useState<string | null>(null);
 
@@ -134,6 +147,9 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
   const [certName, setCertName] = useState("");
   const [certEmail, setCertEmail] = useState("");
   const [certRole, setCertRole] = useState("Grand Prize Winner");
+  const [issuingCert, setIssuingCert] = useState(false);
+  const [batchMode, setBatchMode] = useState(false);
+  const [batchRecipients, setBatchRecipients] = useState<Array<{ name: string; email: string }>>([]);
 
   // Hackathon form states
   const [hkName, setHkName] = useState("");
@@ -215,16 +231,37 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
     }
   };
 
+  // Sync batch recipients list whenever selected project changes
+  useEffect(() => {
+    const proj = projects.find(p => p.id === selectedProjectId);
+    if (!proj) {
+      setBatchRecipients([]);
+      return;
+    }
+    const members = (proj.teamMembers || "")
+      .split(",")
+      .map(m => m.trim())
+      .filter(Boolean);
+    setBatchRecipients(
+      members.map(mName => {
+        const matchedUser = users.find(u => u.name.toLowerCase() === mName.toLowerCase());
+        return { name: mName, email: matchedUser?.email || "" };
+      })
+    );
+  }, [selectedProjectId, projects, users]);
+
   const handleIssueCertificate = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setSuccess("");
+    setNewlyIssuedCert(null);
 
-    if (!selectedProjectId || !certName || !certEmail || !certRole) {
+    if (!selectedProjectId || !certName.trim() || !certEmail.trim() || !certRole.trim()) {
       setError("Please fill in all certificate configuration details.");
       return;
     }
 
+    setIssuingCert(true);
     try {
       const res = await fetch("/api/admin/certificates", {
         method: "POST",
@@ -234,22 +271,82 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
         },
         body: JSON.stringify({
           projectId: selectedProjectId,
-          recipientEmail: certEmail,
-          recipientName: certName,
+          recipientEmail: certEmail.trim(),
+          recipientName: certName.trim(),
           role: certRole
         })
       });
 
+      const data = await res.json();
       if (!res.ok) {
-        const data = await res.json();
         throw new Error(data.error || "Failed to issue certificate.");
       }
 
-      setSuccess(`Certificate issued successfully to ${certName}! Code generated automatically.`);
       setCertName("");
       setCertEmail("");
+      await fetchData();
+      setNewlyIssuedCert(data);
+      setSuccess(`Certificate issued to ${data.recipientName} (${data.certificateCode}).`);
     } catch (err: any) {
       setError(err.message);
+    } finally {
+      setIssuingCert(false);
+    }
+  };
+
+  const handleBatchIssueCertificates = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+    setNewlyIssuedCert(null);
+
+    const validRecipients = batchRecipients.filter(r => r.name.trim() && r.email.trim());
+    if (!selectedProjectId || validRecipients.length === 0 || !certRole) {
+      setError("Provide both name and email for at least one team member to batch issue certificates.");
+      return;
+    }
+
+    setIssuingCert(true);
+    try {
+      const res = await fetch("/api/admin/certificates/batch", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          projectId: selectedProjectId,
+          recipients: validRecipients,
+          role: certRole
+        })
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to batch issue certificates.");
+      }
+
+      await fetchData();
+      if (data.certificates?.[0]) {
+        setNewlyIssuedCert(data.certificates[0]);
+      }
+      setSuccess(`Batch issuance complete: ${data.issuedCount} verifiable certificates issued.`);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIssuingCert(false);
+    }
+  };
+
+  const handleDirectCertPdf = async (cert: Certificate) => {
+    setDownloadingCertId(cert.id);
+    setError("");
+    try {
+      await downloadCertificatePdf(cert);
+    } catch (err: any) {
+      setError(err?.message || "Failed to export A4 PDF.");
+    } finally {
+      setDownloadingCertId(null);
     }
   };
 
@@ -503,20 +600,24 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
         "Project Name",
         "Team Name",
         "AI Evaluation Score",
+        "Organizer Average Score",
+        "Combined Score (40/60)",
         "Evaluation Status"
       ];
 
       const rows = leaderboardData.map((item: any) => [
         item.rank,
-        `"${item.projectName.replace(/"/g, '""')}"`,
-        `"${item.teamName.replace(/"/g, '""')}"`,
+        `"${String(item.projectName || "").replace(/"/g, '""')}"`,
+        `"${String(item.teamName || "").replace(/"/g, '""')}"`,
         item.aiOverallScore !== null ? item.aiOverallScore : "Pending",
-        item.aiOverallScore !== null ? "Evaluated" : "Pending"
+        item.judgeAverageScore !== null ? item.judgeAverageScore : "Pending",
+        item.combinedScore > 0 ? item.combinedScore : "Unranked",
+        item.aiOverallScore !== null || item.judgeAverageScore !== null ? "Evaluated" : "Pending"
       ]);
 
-      const csvContent = "data:text/csv;charset=utf-8," 
+      const csvContent = "data:text/csv;charset=utf-8,"
         + [headers.join(","), ...rows.map((e: any) => e.join(","))].join("\n");
-      
+
       const encodedUri = encodeURI(csvContent);
       const link = document.createElement("a");
       link.setAttribute("href", encodedUri);
@@ -524,7 +625,7 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      
+
       setSuccess("Leaderboard results exported successfully to CSV!");
     } catch (err: any) {
       setError(err.message);
@@ -543,7 +644,7 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
             Admin Console
           </h2>
           <p className="text-sm text-slate-500 mt-1">
-            Global configurations: user role elevation, custom cert creation, and hackathon events active toggle states.
+            Platform operations: role access, submission management, verifiable A4 certificates, and hackathon events.
           </p>
         </div>
         <button
@@ -557,16 +658,41 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
       </div>
 
       {error && (
-        <div className="bg-rose-50 border-l-4 border-rose-500 p-4 text-rose-700 text-sm rounded-r-lg font-medium flex gap-2">
+        <div className="bg-rose-50 border border-rose-200 p-4 text-rose-700 text-sm rounded-xl font-medium flex gap-2 items-center">
           <AlertCircle className="w-5 h-5 text-rose-500 shrink-0" />
-          {error}
+          <span>{error}</span>
         </div>
       )}
 
       {success && (
-        <div className="bg-emerald-50 border-l-4 border-emerald-500 p-4 text-emerald-700 text-sm rounded-r-lg font-medium flex gap-2">
-          <Check className="w-5 h-5 text-emerald-500 shrink-0" />
-          {success}
+        <div className="bg-emerald-50 border border-emerald-200 p-4 text-emerald-800 text-sm rounded-xl font-medium flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Check className="w-5 h-5 text-emerald-600 shrink-0" />
+            <span>{success}</span>
+          </div>
+          {newlyIssuedCert && (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleDirectCertPdf(newlyIssuedCert)}
+                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <FileDown className="w-3.5 h-3.5" />
+                Download A4 PDF
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedCertificate(newlyIssuedCert);
+                  setIsModalOpen(true);
+                }}
+                className="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold rounded-lg inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                Preview & QR
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -838,29 +964,43 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-900">{u.name}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{u.email}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
-                            u.role === "Admin" ? "bg-rose-50 text-rose-700 border border-rose-200" : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold ${
+                            u.role === "Admin"
+                              ? "bg-rose-50 text-rose-700 border border-rose-200"
+                              : u.role === "Judge"
+                              ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                              : "bg-emerald-50 text-emerald-700 border border-emerald-200"
                           }`}>
                             {u.role}
                           </span>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-xs space-x-2">
-                          {u.role !== "Participant" && (
-                            <button
-                              onClick={() => handleUpdateRole(u.id, "Participant")}
-                              className="px-2 py-1 bg-white hover:bg-slate-50 text-slate-600 rounded border border-slate-200 font-semibold cursor-pointer"
-                            >
-                              Demote to Participant
-                            </button>
-                          )}
-                          {u.role !== "Admin" && (
-                            <button
-                              onClick={() => handleUpdateRole(u.id, "Admin")}
-                              className="px-2 py-1 bg-rose-50 hover:bg-rose-100/80 text-rose-800 rounded border border-rose-200 font-semibold cursor-pointer"
-                            >
-                              Make Admin
-                            </button>
-                          )}
+                        <td className="px-6 py-4 whitespace-nowrap text-xs">
+                          <div className="flex flex-wrap gap-1.5">
+                            {u.role !== "Participant" && (
+                              <button
+                                onClick={() => handleUpdateRole(u.id, "Participant")}
+                                className="px-2 py-1 bg-white hover:bg-slate-50 text-slate-600 rounded border border-slate-200 font-semibold cursor-pointer"
+                              >
+                                Set Participant
+                              </button>
+                            )}
+                            {u.role !== "Judge" && (
+                              <button
+                                onClick={() => handleUpdateRole(u.id, "Judge")}
+                                className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded border border-indigo-200 font-semibold cursor-pointer"
+                              >
+                                Make Judge
+                              </button>
+                            )}
+                            {u.role !== "Admin" && (
+                              <button
+                                onClick={() => handleUpdateRole(u.id, "Admin")}
+                                className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-800 rounded border border-rose-200 font-semibold cursor-pointer"
+                              >
+                                Make Admin
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -873,27 +1013,27 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
           {subTab === "teams" && (
             <div className="space-y-6">
               {/* Bulk AI Evaluation Banner Panel */}
-              <div className="bg-gradient-to-r from-indigo-500 via-indigo-600 to-indigo-700 text-white p-6 sm:p-8 rounded-2xl shadow-md border border-indigo-400 space-y-4">
+              <div className="bg-gradient-to-r from-indigo-600 via-indigo-600 to-indigo-700 text-white p-6 sm:p-8 rounded-2xl shadow-sm border border-indigo-500 space-y-4">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                   <div className="space-y-2">
-                    <h4 className="font-sans font-extrabold text-white text-xl tracking-tight flex items-center gap-2">
-                      <Power className="w-5 h-5 text-indigo-200 animate-pulse" />
+                    <h4 className="font-sans font-bold text-white text-xl tracking-tight flex items-center gap-2">
+                      <Power className="w-5 h-5 text-indigo-200" />
                       Autonomous AI Hackathon Evaluator
                     </h4>
                     <p className="text-indigo-100 text-sm max-w-xl leading-relaxed">
-                      Grading hackathons is now fully automated. Click the button to command the AI system to fetch GitHub repository telemetry, parse source files, evaluate project descriptions, and instantly compute grades and ranks for all registered submissions.
+                      Command the AI evaluation engine to inspect GitHub repositories, parse source files, review documentation, and compute criteria scorecards for all registered submissions.
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={handleBulkAIEvaluation}
                     disabled={bulkLoading || projects.length === 0}
-                    className="px-6 py-3 bg-white hover:bg-indigo-50 text-indigo-700 font-bold text-sm rounded-xl shadow-lg transition-all cursor-pointer inline-flex items-center gap-2 shrink-0 disabled:opacity-50"
+                    className="px-6 py-3 bg-white hover:bg-indigo-50 text-indigo-700 font-bold text-sm rounded-xl shadow transition-colors cursor-pointer inline-flex items-center gap-2 shrink-0 disabled:opacity-50"
                   >
                     {bulkLoading ? (
                       <>
                         <RefreshCw className="w-4 h-4 animate-spin text-indigo-600" />
-                        Running Autonomous Engine...
+                        Running Evaluation Engine...
                       </>
                     ) : (
                       <>
@@ -904,10 +1044,10 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                   </button>
                 </div>
                 {bulkLoading && (
-                  <div className="bg-indigo-800/40 p-4 rounded-xl border border-indigo-500/30">
-                    <p className="text-xs text-indigo-200 font-medium flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-                      Analyzing codebases, parsing documents, and invoking Gemini 3.5 AI Evaluation templates... This may take up to a minute. Please keep this tab active.
+                  <div className="bg-indigo-800/40 p-4 rounded-xl border border-indigo-400/30">
+                    <p className="text-xs text-indigo-100 font-medium flex items-center gap-2">
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" />
+                      Analyzing codebases, parsing documents, and generating Gemini AI evaluation scorecards...
                     </p>
                   </div>
                 )}
@@ -1045,8 +1185,8 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                               </div>
 
                               <div className="text-[11px] text-slate-400 space-y-0.5 pt-1.5 font-mono">
-                                {proj.githubUrl && <div className="truncate">GitHub: <a href={proj.githubUrl} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">{proj.githubUrl}</a></div>}
-                                {proj.liveUrl && <div className="truncate">Live Demo: <a href={proj.liveUrl} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">{proj.liveUrl}</a></div>}
+                                {safeExternalUrl(proj.githubUrl) && <div className="truncate">GitHub: <a href={safeExternalUrl(proj.githubUrl)!} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">{proj.githubUrl}</a></div>}
+                                {safeExternalUrl(proj.liveUrl) && <div className="truncate">Live Demo: <a href={safeExternalUrl(proj.liveUrl)!} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">{proj.liveUrl}</a></div>}
                               </div>
                             </div>
 
@@ -1141,168 +1281,292 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
 
           {subTab === "certs" && (
             <div className="space-y-8">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <form onSubmit={handleIssueCertificate} className="space-y-5">
-                <h3 className="font-sans font-bold text-slate-900 text-lg border-b border-slate-100 pb-2">Issue Certified Award</h3>
-                
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Select Project Submission</label>
-                  <select
-                    value={selectedProjectId}
-                    onChange={(e) => setSelectedProjectId(e.target.value)}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
-                  >
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.projectName} (Team: {p.teamName})
-                      </option>
-                    ))}
-                  </select>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div className="space-y-5">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <h3 className="font-sans font-bold text-slate-900 text-lg">Issue Verifiable Award</h3>
+                    <div className="inline-flex bg-slate-100 p-0.5 rounded-lg text-xs">
+                      <button
+                        type="button"
+                        onClick={() => setBatchMode(false)}
+                        className={`px-2.5 py-1 rounded-md font-semibold cursor-pointer transition-colors ${!batchMode ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600"}`}
+                      >
+                        Single
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBatchMode(true)}
+                        className={`px-2.5 py-1 rounded-md font-semibold cursor-pointer transition-colors ${batchMode ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600"}`}
+                      >
+                        Team Batch
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Select Project Submission</label>
+                    <select
+                      value={selectedProjectId}
+                      onChange={(e) => setSelectedProjectId(e.target.value)}
+                      className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                    >
+                      {projects.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.projectName} (Team: {p.teamName})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Quick auto-fill from project teamMembers */}
+                  {!batchMode && (() => {
+                    const selProj = projects.find(p => p.id === selectedProjectId);
+                    const members = (selProj?.teamMembers || "").split(",").map(m => m.trim()).filter(Boolean);
+                    if (members.length === 0) return null;
+                    return (
+                      <div className="space-y-1.5">
+                        <span className="text-[11px] font-semibold text-slate-500 block">Quick-fill from team roster:</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {members.map(m => {
+                            const matchedUser = users.find(u => u.name.toLowerCase() === m.toLowerCase());
+                            return (
+                              <button
+                                key={m}
+                                type="button"
+                                onClick={() => {
+                                  setCertName(m);
+                                  if (matchedUser?.email) setCertEmail(matchedUser.email);
+                                }}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-md text-xs font-semibold cursor-pointer transition-colors"
+                              >
+                                <UserPlus className="w-3 h-3" />
+                                {m}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {batchMode ? (
+                    <form onSubmit={handleBatchIssueCertificates} className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Award Designation / Role</label>
+                        <select
+                          value={certRole}
+                          onChange={(e) => setCertRole(e.target.value)}
+                          className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                        >
+                          <option value="Grand Prize Winner">Grand Prize Winner</option>
+                          <option value="First Runner-up">First Runner-up</option>
+                          <option value="Best Technical Hack">Best Technical Hack</option>
+                          <option value="Most Innovative AI Project">Most Innovative AI Project</option>
+                          <option value="Honorable Mention">Honorable Mention</option>
+                          <option value="Valued Hackathon Participant">Valued Hackathon Participant</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Team Recipients ({batchRecipients.length})</label>
+                          <button
+                            type="button"
+                            onClick={() => setBatchRecipients(prev => [...prev, { name: "", email: "" }])}
+                            className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 cursor-pointer"
+                          >
+                            + Add Row
+                          </button>
+                        </div>
+                        {batchRecipients.map((r, idx) => (
+                          <div key={idx} className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <input
+                              type="text"
+                              placeholder="Member Full Name"
+                              value={r.name}
+                              onChange={(e) => setBatchRecipients(prev => prev.map((item, i) => i === idx ? { ...item, name: e.target.value } : item))}
+                              className="px-3 py-2 border border-slate-300 rounded-lg text-xs"
+                            />
+                            <input
+                              type="email"
+                              placeholder="Member Email"
+                              value={r.email}
+                              onChange={(e) => setBatchRecipients(prev => prev.map((item, i) => i === idx ? { ...item, email: e.target.value } : item))}
+                              className="px-3 py-2 border border-slate-300 rounded-lg text-xs"
+                            />
+                          </div>
+                        ))}
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={issuingCert}
+                        className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-sm font-semibold rounded-lg text-white shadow transition-colors cursor-pointer flex justify-center items-center gap-1.5"
+                      >
+                        <Check className="w-4 h-4" />
+                        {issuingCert ? "Issuing Batch Certificates..." : "Batch Issue A4 Certificates"}
+                      </button>
+                    </form>
+                  ) : (
+                    <form onSubmit={handleIssueCertificate} className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Recipient Student Name</label>
+                        <input
+                          type="text"
+                          required
+                          value={certName}
+                          onChange={(e) => setCertName(e.target.value)}
+                          placeholder="e.g. Alice Johnson"
+                          className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Recipient Email</label>
+                        <input
+                          type="email"
+                          required
+                          value={certEmail}
+                          onChange={(e) => setCertEmail(e.target.value)}
+                          placeholder="alice@university.edu"
+                          className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Award Designation / Role</label>
+                        <select
+                          value={certRole}
+                          onChange={(e) => setCertRole(e.target.value)}
+                          className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                        >
+                          <option value="Grand Prize Winner">Grand Prize Winner</option>
+                          <option value="First Runner-up">First Runner-up</option>
+                          <option value="Best Technical Hack">Best Technical Hack</option>
+                          <option value="Most Innovative AI Project">Most Innovative AI Project</option>
+                          <option value="Honorable Mention">Honorable Mention</option>
+                          <option value="Valued Hackathon Participant">Valued Hackathon Participant</option>
+                        </select>
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={issuingCert}
+                        className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-sm font-semibold rounded-lg text-white shadow transition-colors cursor-pointer flex justify-center items-center gap-1.5"
+                      >
+                        <Check className="w-4 h-4" />
+                        {issuingCert ? "Issuing Certificate..." : "Issue Verifiable Certificate"}
+                      </button>
+                    </form>
+                  )}
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Recipient Student Name</label>
-                  <input
-                    type="text"
-                    required
-                    value={certName}
-                    onChange={(e) => setCertName(e.target.value)}
-                    placeholder="e.g. Alice Johnson"
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-slate-600 text-xs space-y-4 self-start">
+                  <h4 className="font-bold text-slate-900 uppercase tracking-wider">Landscape A4 Certification Spec</h4>
+                  <p className="leading-relaxed">
+                    Every certificate issued generates a unique verification code (<span className="font-mono font-bold text-slate-800">CERT-XXXXXX</span>), attaches the hackathon event title, and becomes immediately verifiable on the public Credentials Ledger.
+                  </p>
+                  <p className="leading-relaxed">
+                    Recipients and administrators can export an archival <strong>Landscape A4 (297mm × 210mm) PDF</strong> or high-resolution PNG containing an embedded QR verification seal.
+                  </p>
                 </div>
+              </div>
 
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Recipient Email</label>
-                  <input
-                    type="email"
-                    required
-                    value={certEmail}
-                    onChange={(e) => setCertEmail(e.target.value)}
-                    placeholder="alice@university.edu"
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Award Designation / Role</label>
-                  <select
-                    value={certRole}
-                    onChange={(e) => setCertRole(e.target.value)}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
-                  >
-                    <option value="Grand Prize Winner">🥇 Grand Prize Winner</option>
-                    <option value="First Runner-up">🥈 First Runner-up</option>
-                    <option value="Best Technical Hack">💻 Best Technical Hack</option>
-                    <option value="Most Innovative AI Project">🤖 Most Innovative AI Project</option>
-                    <option value="Honorable Mention">⭐ Honorable Mention</option>
-                    <option value="Valued Hackathon Participant">🎖️ Valued Hackathon Participant</option>
-                  </select>
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-sm font-semibold rounded-lg text-white shadow transition-all cursor-pointer flex justify-center items-center gap-1"
-                >
-                  <Check className="w-4 h-4" /> Issue Certified Badge
-                </button>
-              </form>
-
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 text-slate-600 text-xs space-y-4">
-                <h4 className="font-bold text-slate-800 uppercase tracking-wider">Badge Guidelines</h4>
-                <p>
-                  Certificates and credentials generated on HackEval carry an automatically computed verification code (e.g. CERT-249582) which can be dynamically validated on the participant's portal dashboard.
-                </p>
-                <p>
-                  Issuing an award immediately updates the recipient's personal certificates list. An email trigger can be integrated using external notification gateways.
-                </p>
+              {/* Previously Issued Certificates List */}
+              <div className="mt-8 border-t border-slate-100 pt-8 space-y-4">
+                <h3 className="font-sans font-bold text-slate-900 text-lg">Issued Certificates Registry ({certificates.length})</h3>
+                {certificates.length === 0 ? (
+                  <div className="text-center py-8 text-slate-400 text-xs border border-dashed border-slate-200 rounded-xl">
+                    No awards or badges have been issued yet. Use the form above to grant the first verifiable certificate.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                    <table className="min-w-full divide-y divide-slate-200 text-xs text-left">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Recipient</th>
+                          <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Project / Event</th>
+                          <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Designation</th>
+                          <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Code</th>
+                          <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-slate-200 font-medium text-slate-700">
+                        {certificates.map((cert) => (
+                          <tr key={cert.id} className="hover:bg-slate-50/50">
+                            <td className="px-4 py-3">
+                              <div className="font-bold text-slate-900">{cert.recipientName}</div>
+                              <div className="text-[11px] text-slate-500 font-mono">{cert.recipientEmail}</div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="text-slate-900 font-semibold">{cert.projectName}</div>
+                              <div className="text-[11px] text-slate-500">Team: {cert.teamName}</div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-bold">
+                                {cert.role}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 font-mono text-[11px] font-semibold text-indigo-700">{cert.certificateCode}</td>
+                            <td className="px-4 py-3 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDirectCertPdf(cert)}
+                                  disabled={downloadingCertId === cert.id}
+                                  className="text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 px-2.5 py-1 rounded font-semibold inline-flex items-center gap-1 cursor-pointer"
+                                >
+                                  <FileDown className="w-3.5 h-3.5" />
+                                  {downloadingCertId === cert.id ? "PDF..." : "A4 PDF"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedCertificate(cert);
+                                    setIsModalOpen(true);
+                                  }}
+                                  className="text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-2 py-1 rounded transition-colors font-semibold inline-flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Eye className="w-3.5 h-3.5" /> View
+                                </button>
+                                {confirmDeleteCertId === cert.id ? (
+                                  <div className="inline-flex items-center gap-1 bg-rose-50 border border-rose-200 rounded-md p-1">
+                                    <span className="text-[10px] text-rose-700 font-bold px-1">Revoke?</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteCertificate(cert.id)}
+                                      className="px-1.5 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[10px] font-bold cursor-pointer"
+                                    >
+                                      Yes
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setConfirmDeleteCertId(null)}
+                                      className="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-[10px] font-bold cursor-pointer"
+                                    >
+                                      No
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmDeleteCertId(cert.id)}
+                                    className="text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-2 py-1 rounded transition-colors font-semibold inline-flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Trash className="w-3.5 h-3.5" /> Revoke
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </div>
-
-            {/* Previously Issued Certificates List */}
-            <div className="mt-8 border-t border-slate-100 pt-8 space-y-4">
-              <h3 className="font-sans font-bold text-slate-900 text-lg">Active Issued Awards & Badges ({certificates.length})</h3>
-              {certificates.length === 0 ? (
-                <div className="text-center py-8 text-slate-400 text-xs border border-dashed border-slate-200 rounded-xl">
-                  No awards or badges have been issued yet. Use the form above to grant the first certified badge!
-                </div>
-              ) : (
-                <div className="overflow-x-auto border border-slate-200 rounded-xl">
-                  <table className="min-w-full divide-y divide-slate-200 text-xs text-left">
-                    <thead className="bg-slate-50">
-                      <tr>
-                        <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Recipient</th>
-                        <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Project / Team</th>
-                        <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Designation</th>
-                        <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Verification Code</th>
-                        <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-slate-200 font-medium text-slate-700">
-                      {certificates.map((cert) => (
-                        <tr key={cert.id} className="hover:bg-slate-50/50">
-                          <td className="px-4 py-3">
-                            <div className="font-bold text-slate-900">{cert.recipientName}</div>
-                            <div className="text-[10px] text-slate-400">{cert.recipientEmail}</div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="text-slate-800 font-semibold">{cert.projectName}</div>
-                            <div className="text-[10px] text-slate-500">Team: {cert.teamName}</div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className="inline-flex items-center px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100 text-[10px] font-bold">
-                              {cert.role}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 font-mono text-[10px] text-slate-500">{cert.certificateCode}</td>
-                          <td className="px-4 py-3 text-right flex items-center justify-end gap-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedCertificate(cert);
-                                setIsModalOpen(true);
-                              }}
-                              className="text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-2 py-1 rounded transition-all font-semibold inline-flex items-center gap-0.5 cursor-pointer"
-                            >
-                              <Eye className="w-3.5 h-3.5" /> View
-                            </button>
-                            {confirmDeleteCertId === cert.id ? (
-                              <div className="inline-flex items-center gap-1.5 bg-rose-50 border border-rose-200 rounded-md p-1">
-                                <span className="text-[9px] text-rose-700 font-bold px-1">Revoke?</span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteCertificate(cert.id)}
-                                  className="px-1.5 py-0.5 bg-rose-600 hover:bg-rose-700 text-white rounded text-[9px] font-bold cursor-pointer transition-colors"
-                                >
-                                  Yes
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setConfirmDeleteCertId(null)}
-                                  className="px-1.5 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-[9px] font-bold cursor-pointer transition-colors"
-                                >
-                                  No
-                                </button>
-                              </div>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => setConfirmDeleteCertId(cert.id)}
-                                className="text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-2 py-1 rounded transition-all font-semibold inline-flex items-center gap-0.5 cursor-pointer"
-                              >
-                                <Trash className="w-3.5 h-3.5" /> Revoke
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+          )}
 
           {subTab === "events" && (
             selectedHk ? (

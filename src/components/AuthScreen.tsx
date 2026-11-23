@@ -1,8 +1,12 @@
 import React, { useState } from "react";
 import { LogIn, UserPlus, ShieldAlert, Award, Cpu } from "lucide-react";
+import { UserRole } from "../types";
 
 interface AuthScreenProps {
-  onLoginSuccess: (token: string, user: { id: string; name: string; email: string; role: "Admin" }) => void;
+  onLoginSuccess: (
+    token: string,
+    user: { id: string; name: string; email: string; role: UserRole }
+  ) => void;
 }
 
 export function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
@@ -19,9 +23,7 @@ export function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
     setLoading(true);
 
     const url = isRegister ? "/api/auth/register" : "/api/auth/login";
-    const body = isRegister 
-      ? { email, password, name, role: "Admin" }
-      : { email, password };
+    const body = isRegister ? { email, password, name } : { email, password };
 
     try {
       const res = await fetch(url, {
@@ -43,7 +45,7 @@ export function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
     }
   };
 
-  // Quick seed login for easy dev testing
+  // Quick seed login for organizer demo verification
   const handleQuickLogin = async () => {
     setError("");
     setLoading(true);
@@ -80,17 +82,19 @@ export function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
           </span>
         </div>
         <h2 className="text-center text-3xl font-sans font-bold tracking-tight text-slate-900">
-          {isRegister ? "Create Organizer Account" : "Sign in as Organizer"}
+          {isRegister ? "Create Account" : "Sign in to HackEval"}
         </h2>
         <p className="mt-2 text-center text-sm text-slate-500">
-          The Production-Ready Hackathon Evaluation & Judging Portal
+          {isRegister
+            ? "New accounts start with Participant access; Administrators can promote Judges in Admin Console."
+            : "Access judging workflows, credentials ledger, and platform administration."}
         </p>
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-4 shadow-sm border border-slate-200 rounded-2xl sm:px-10">
           {error && (
-            <div className="mb-4 bg-rose-50 border-l-4 border-rose-500 p-4 rounded-r-lg flex gap-2">
+            <div className="mb-4 bg-rose-50 border border-rose-200 p-4 rounded-xl flex gap-2 items-center">
               <ShieldAlert className="w-5 h-5 text-rose-500 shrink-0" />
               <p className="text-sm text-rose-700 font-medium">{error}</p>
             </div>
@@ -105,7 +109,7 @@ export function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Angela Organizer"
+                  placeholder="e.g. Alex Rivera"
                   className="mt-1 block w-full px-4 py-2 border border-slate-300 rounded-lg text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                 />
               </div>
@@ -128,9 +132,10 @@ export function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
               <input
                 type="password"
                 required
+                minLength={6}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
+                placeholder="At least 6 characters"
                 className="mt-1 block w-full px-4 py-2 border border-slate-300 rounded-lg text-sm shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
               />
             </div>
@@ -144,11 +149,11 @@ export function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
                 <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
               ) : isRegister ? (
                 <>
-                  <UserPlus className="w-4 h-4" /> Register as Organizer
+                  <UserPlus className="w-4 h-4" /> Create Participant Account
                 </>
               ) : (
                 <>
-                  <LogIn className="w-4 h-4" /> Sign In as Organizer
+                  <LogIn className="w-4 h-4" /> Sign In
                 </>
               )}
             </button>
@@ -158,10 +163,13 @@ export function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
             <div className="text-sm">
               <button
                 type="button"
-                onClick={() => setIsRegister(!isRegister)}
+                onClick={() => {
+                  setIsRegister(!isRegister);
+                  setError("");
+                }}
                 className="font-semibold text-indigo-600 hover:text-indigo-500 transition-colors cursor-pointer"
               >
-                {isRegister ? "Already have an account? Sign in" : "New organizer? Create account"}
+                {isRegister ? "Already have an account? Sign in" : "Need an account? Create one"}
               </button>
             </div>
           </div>
@@ -170,18 +178,19 @@ export function AuthScreen({ onLoginSuccess }: AuthScreenProps) {
         {/* Quick Testing Portal Panel */}
         <div className="mt-6 bg-amber-50 border border-amber-200 rounded-2xl p-5 text-amber-900 shadow-sm">
           <h4 className="text-xs font-bold uppercase tracking-wider text-amber-800 flex items-center gap-1.5 mb-2">
-            <Cpu className="w-4 h-4" /> Rapid Dev Testing Presets
+            <Cpu className="w-4 h-4" /> Demo Organizer Access
           </h4>
           <p className="text-xs text-amber-700 mb-3 leading-relaxed">
-            Quick-fill the organizer database preset to immediately access administrative setup, leaderboard tables, and grading workflows.
+            Sign in with the seeded Organizer account to explore evaluation runs, leaderboard administration, and certificate issuance.
           </p>
           <div className="w-full">
             <button
               type="button"
               onClick={handleQuickLogin}
-              className="w-full px-4 py-2 text-xs font-bold bg-white hover:bg-amber-100 border border-amber-300 text-amber-800 rounded-xl shadow-sm transition-colors text-center cursor-pointer"
+              disabled={loading}
+              className="w-full px-4 py-2 text-xs font-bold bg-white hover:bg-amber-100 border border-amber-300 text-amber-800 rounded-xl shadow-sm transition-colors text-center cursor-pointer disabled:opacity-50"
             >
-              👑 Angela (Organizer Account)
+              Sign in as Angela (Organizer Admin)
             </button>
           </div>
         </div>

@@ -1,5 +1,6 @@
 import express, { Request, Response, NextFunction } from "express";
 import path from "path";
+import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { GoogleGenAI, Type } from "@google/genai";
@@ -10,13 +11,13 @@ dotenv.config();
 
 // Initialize DB
 import { db } from "./src/db";
-import { UserRole, LiveAnalysisResult } from "./src/types";
+import { UserRole } from "./src/types";
 
 const app = express();
 const PORT = 3000;
 
 // Body parser
-app.use(express.json());
+app.use(express.json({ limit: "2mb" }));
 
 // Database initialization runs in the background inside db.ts constructor
 app.use(async (req: Request, res: Response, next: NextFunction) => {
@@ -47,10 +48,87 @@ if (GEMINI_API_KEY && GEMINI_API_KEY !== "MY_GEMINI_API_KEY") {
     console.error("Failed to initialize Gemini AI SDK client:", err);
   }
 } else {
-  console.warn("GEMINI_API_KEY is not set or using placeholder. AI evaluations will use robust fallback mock metrics.");
+  console.warn("GEMINI_API_KEY is not set or using placeholder. AI evaluations will use deterministic scoring metrics.");
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || "hackathon_secret_key_2026";
+const JWT_SECRET = process.env.JWT_SECRET || (() => {
+  console.warn("JWT_SECRET environment variable not set; generating ephemeral secret for this runtime.");
+  return crypto.randomBytes(32).toString("hex");
+})();
+
+const GEMINI_MODEL = "gemini-4-hydrogen";
+
+// Retry helper for Gemini transient rate/network errors
+async function withRetry<T>(fn: () => Promise<T>, maxRetries = 2): Promise<T> {
+  let lastError: any;
+  for (let i = 0; i <= maxRetries; i++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      lastError = err;
+      const msg = String(err?.message || "").toLowerCase();
+      const status = err?.status || err?.code;
+      const retryable = status === 429 || status === 503 || msg.includes("429") || msg.includes("rate") || msg.includes("quota") || msg.includes("unavailable");
+      if (!retryable || i === maxRetries) throw err;
+      await new Promise((r) => setTimeout(r, 800 * Math.pow(2, i)));
+    }
+  }
+  throw lastError;
+}
+
+// Strict SSRF-safe public HTTP(S) URL validator
+function validatePublicHttpUrl(rawUrl: string): string | null {
+  try {
+    const trimmed = rawUrl.trim();
+    if (!trimmed) return null;
+    const withScheme = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+    const parsed = new URL(withScheme);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return null;
+    }
+    const hostname = parsed.hostname.toLowerCase();
+    if (!hostname || hostname.length > 253) return null;
+    if (
+      hostname === "localhost" ||
+      hostname === "::1" ||
+      hostname === "[::1]" ||
+      hostname === "0.0.0.0" ||
+      hostname.endsWith(".local") ||
+      hostname.endsWith(".internal") ||
+      hostname.endsWith(".localhost")
+    ) {
+      return null;
+    }
+    // Block IPv4 private/loopback/link-local ranges
+    const ipv4Match = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (ipv4Match) {
+      const [a, b] = [Number(ipv4Match[1]), Number(ipv4Match[2])];
+      if (
+        a === 127 ||
+        a === 10 ||
+        a === 0 ||
+        (a === 169 && b === 254) ||
+        (a === 172 && b >= 16 && b <= 31) ||
+        (a === 192 && b === 168)
+      ) {
+        return null;
+      }
+    }
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+function isValidOptionalUrl(raw?: string): boolean {
+  if (!raw || !raw.trim()) return true;
+  try {
+    const parsed = new URL(raw.trim());
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
 
 // --- MIDDLEWARES ---
 
@@ -119,30 +197,42 @@ const authorizeRoles = (...roles: UserRole[]) => {
 
 // --- AUTH API ---
 
-// Register
+// Register (always creates a standard Participant account; Admins can elevate users in Admin Console)
 app.post("/api/auth/register", async (req: Request, res: Response) => {
   try {
-    const { email, password, name, role } = req.body;
+    const { email, password, name } = req.body;
     if (!email || !password || !name) {
       res.status(400).json({ error: "Email, password, and name are required." });
       return;
     }
 
-    const existing = db.getUsers().find(u => u.email.toLowerCase() === email.toLowerCase());
+    const cleanEmail = String(email).trim().toLowerCase();
+    const cleanName = String(name).trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      res.status(400).json({ error: "Please provide a valid email address." });
+      return;
+    }
+    if (String(password).length < 6) {
+      res.status(400).json({ error: "Password must be at least 6 characters long." });
+      return;
+    }
+
+    await db.refreshCollection("users");
+    const existing = db.getUsers().find(u => u.email.toLowerCase() === cleanEmail);
     if (existing) {
       res.status(400).json({ error: "Email already registered." });
       return;
     }
 
     const salt = bcrypt.genSaltSync(10);
-    const passwordHash = bcrypt.hashSync(password, salt);
+    const passwordHash = bcrypt.hashSync(String(password), salt);
 
-    const userRole: UserRole = (role === "Admin" || role === "Judge") ? role : "Participant";
+    const userRole: UserRole = "Participant";
 
     const newUser = await db.createUser({
-      email: email.toLowerCase(),
+      email: cleanEmail,
       passwordHash,
-      name,
+      name: cleanName,
       role: userRole
     });
 
@@ -235,7 +325,8 @@ app.get("/api/projects/:id", optionalAuthenticateToken, async (req: AuthRequest,
       db.refreshCollection("aiEvaluations"),
       db.refreshCollection("judgeReviews"),
       db.refreshCollection("githubAnalyses"),
-      db.refreshCollection("comments")
+      db.refreshCollection("comments"),
+      db.refreshCollection("certificates")
     ]);
     const project = db.getProjects().find(p => p.id === req.params.id);
     if (!project) {
@@ -243,18 +334,20 @@ app.get("/api/projects/:id", optionalAuthenticateToken, async (req: AuthRequest,
       return;
     }
 
-    // Include evaluations and reviews in the response object
+    // Include evaluations, reviews, analysis, comments, and issued certificates
     const aiEvaluation = db.getAIEvaluations().find(e => e.projectId === project.id) || null;
     const judgeReviews = db.getJudgeReviews().filter(r => r.projectId === project.id);
     const githubAnalysis = db.getGitHubAnalyses().find(g => g.projectId === project.id) || null;
     const comments = db.getComments().filter(c => c.projectId === project.id);
+    const certificates = db.getCertificates().filter(c => c.projectId === project.id);
 
     res.json({
       ...project,
       aiEvaluation,
       judgeReviews,
       githubAnalysis,
-      comments
+      comments,
+      certificates
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -284,14 +377,28 @@ app.post("/api/projects", optionalAuthenticateToken, async (req: AuthRequest, re
       return;
     }
 
-    // Verify hackathon exists or fallback to seeded hackathon
+    if (
+      !isValidOptionalUrl(githubUrl) ||
+      !isValidOptionalUrl(aiStudioUrl) ||
+      !isValidOptionalUrl(liveUrl) ||
+      !isValidOptionalUrl(demoVideoUrl) ||
+      !isValidOptionalUrl(presentationDocUrl)
+    ) {
+      res.status(400).json({ error: "All submitted URLs must use http:// or https://." });
+      return;
+    }
+
+    // Verify hackathon exists or fallback to active/seeded hackathon
+    await db.refreshCollection("hackathons");
+    await db.refreshCollection("projects");
     const activeHackathon = db.getHackathons().find(h => h.active) || db.getHackathons()[0];
     const targetHackathonId = hackathonId || (activeHackathon ? activeHackathon.id : "hk_default");
 
-    // Check if team name or github is already registered for this hackathon
+    // Check if project name or github is already registered for this hackathon
     const dupProject = db.getProjects().find(
-      p => p.hackathonId === targetHackathonId && 
-      (p.projectName.toLowerCase() === projectName.toLowerCase() || p.githubUrl.toLowerCase() === githubUrl.toLowerCase())
+      p => p.hackathonId === targetHackathonId &&
+      (p.projectName.toLowerCase() === String(projectName).trim().toLowerCase() ||
+       p.githubUrl.toLowerCase() === String(githubUrl).trim().toLowerCase())
     );
     if (dupProject) {
       res.status(400).json({ error: "A project with this name or GitHub repository has already been submitted for this event." });
@@ -299,17 +406,17 @@ app.post("/api/projects", optionalAuthenticateToken, async (req: AuthRequest, re
     }
 
     const newProject = await db.createProject({
-      projectName,
-      teamName,
-      teamMembers: teamMembers || req.user?.name || "",
-      description,
-      problemStatement,
-      githubUrl,
-      aiStudioUrl: aiStudioUrl || "",
-      liveUrl: liveUrl || "",
-      demoVideoUrl: demoVideoUrl || "",
-      presentationDocName: presentationDocName || "slides.pdf",
-      presentationDocUrl: presentationDocUrl || "https://example.com/slides.pdf",
+      projectName: String(projectName).trim(),
+      teamName: String(teamName).trim(),
+      teamMembers: String(teamMembers || req.user?.name || "").trim(),
+      description: String(description).trim(),
+      problemStatement: String(problemStatement).trim(),
+      githubUrl: String(githubUrl).trim(),
+      aiStudioUrl: String(aiStudioUrl || "").trim(),
+      liveUrl: String(liveUrl || "").trim(),
+      demoVideoUrl: String(demoVideoUrl || "").trim(),
+      presentationDocName: String(presentationDocName || "").trim(),
+      presentationDocUrl: String(presentationDocUrl || "").trim(),
       hackathonId: targetHackathonId
     });
 
@@ -328,13 +435,32 @@ app.put("/api/projects/:id", authenticateToken, async (req: AuthRequest, res: Re
       return;
     }
 
-    // Role gate: Participants can only update their own team's project, Admins can edit anything
-    if (req.user?.role === "Participant" && project.teamMembers.toLowerCase().indexOf(req.user.name.toLowerCase()) === -1) {
+    // Role gate: Admins can edit any project; Participants/Judges can only edit if listed on teamMembers
+    const isTeamMember = project.teamMembers.toLowerCase().includes((req.user?.name || "").toLowerCase());
+    if (req.user?.role !== "Admin" && !isTeamMember) {
       res.status(403).json({ error: "You can only edit submissions belonging to your team members list." });
       return;
     }
 
-    const updated = await db.updateProject(req.params.id, req.body);
+    const allowedKeys = [
+      "projectName", "teamName", "teamMembers", "description",
+      "problemStatement", "githubUrl", "aiStudioUrl", "liveUrl",
+      "demoVideoUrl", "presentationDocName", "presentationDocUrl"
+    ] as const;
+
+    const sanitizedUpdates: Record<string, any> = {};
+    for (const key of allowedKeys) {
+      if (req.body[key] !== undefined) {
+        const val = String(req.body[key]).trim();
+        if (key.endsWith("Url") && !isValidOptionalUrl(val)) {
+          res.status(400).json({ error: `Invalid URL format for ${key}. Must use http:// or https://.` });
+          return;
+        }
+        sanitizedUpdates[key] = val;
+      }
+    }
+
+    const updated = await db.updateProject(req.params.id, sanitizedUpdates);
     res.json(updated);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -502,9 +628,15 @@ const analyzeGitHubRepo = async (githubUrl: string): Promise<{
       readmeContent = `# ${repo}\n\n⚠️ No README.md file was found in the repository root directory. Effective documentation is essential for university hackathons.`;
     }
 
-    // 4. Fetch tree
-    const treeRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/main?recursive=1`, { headers })
-      .then(res => res.ok ? res : fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/master?recursive=1`, { headers }));
+    // 4. Fetch tree using the repository's real default branch
+    const defaultBranch = repoData.default_branch || "main";
+    let treeRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${encodeURIComponent(defaultBranch)}?recursive=1`, { headers });
+    if (!treeRes.ok && defaultBranch !== "main") {
+      treeRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/main?recursive=1`, { headers });
+    }
+    if (!treeRes.ok && defaultBranch !== "master") {
+      treeRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/master?recursive=1`, { headers });
+    }
     
     let repoStructure: string[] = [];
     let hasGitignore = false;
@@ -803,22 +935,23 @@ const analyzeGitHubRepo = async (githubUrl: string): Promise<{
   }
 };
 
-// Helper: Extract actual source code samples from GitHub
-const fetchSourceCodeSamples = async (githubUrl: string, structure: string[]): Promise<string> => {
+// Helper: Extract actual source code samples from GitHub using detected branch
+const fetchSourceCodeSamples = async (githubUrl: string, structure: string[], branches: string[] = ["main", "master"]): Promise<string> => {
   try {
     const parsed = parseGitHubUrl(githubUrl);
     if (!parsed) return "";
-    
+
     const { owner, repo } = parsed;
-    
+    const candidateBranches = Array.from(new Set([...(branches || []), "main", "master"])).slice(0, 3);
+
     // Find up to 2 code files to read
     const codeExtensions = [".tsx", ".ts", ".js", ".py", ".html", ".css", ".json"];
-    const filesToFetch = structure.filter(path => 
-      codeExtensions.some(ext => path.endsWith(ext)) && 
-      !path.includes("node_modules") && 
-      !path.includes("dist") &&
-      !path.includes(".min.") &&
-      !path.includes("package-lock")
+    const filesToFetch = structure.filter(filePath =>
+      codeExtensions.some(ext => filePath.endsWith(ext)) &&
+      !filePath.includes("node_modules") &&
+      !filePath.includes("dist") &&
+      !filePath.includes(".min.") &&
+      !filePath.includes("package-lock")
     ).slice(0, 2);
 
     if (filesToFetch.length === 0) {
@@ -827,17 +960,14 @@ const fetchSourceCodeSamples = async (githubUrl: string, structure: string[]): P
 
     let samples = "";
     for (const file of filesToFetch) {
-      const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/main/${file}`;
-      const rawUrlBackup = `https://raw.githubusercontent.com/${owner}/${repo}/master/${file}`;
-      
-      let fileRes = await fetch(rawUrl);
-      if (!fileRes.ok) {
-        fileRes = await fetch(rawUrlBackup);
-      }
-      
-      if (fileRes.ok) {
-        const text = await fileRes.text();
-        samples += `\n--- SOURCE FILE: ${file} ---\n${text.slice(0, 1500)}\n`;
+      for (const branch of candidateBranches) {
+        const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${encodeURIComponent(branch)}/${file}`;
+        const fileRes = await fetch(rawUrl);
+        if (fileRes.ok) {
+          const text = await fileRes.text();
+          samples += `\n--- SOURCE FILE: ${file} (${branch}) ---\n${text.slice(0, 1500)}\n`;
+          break;
+        }
       }
     }
     return samples;
@@ -933,7 +1063,7 @@ async function executeAIEvaluation(projectId: string): Promise<any> {
   }
 
   // Extract actual source code samples from repository
-  const sourceSamples = await fetchSourceCodeSamples(project.githubUrl, githubData.repoStructure);
+  const sourceSamples = await fetchSourceCodeSamples(project.githubUrl, githubData.repoStructure, githubData.branches || ["main"]);
 
   // Call Gemini to evaluate
   if (ai) {
@@ -1019,8 +1149,8 @@ async function executeAIEvaluation(projectId: string): Promise<any> {
         Make sure your review is encouraging but academically honest and critical. Do not give inflated scores.
       `;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
+      const response = await withRetry(() => ai!.models.generateContent({
+        model: GEMINI_MODEL,
         contents: evaluationPrompt,
         config: {
           responseMimeType: "application/json",
@@ -1118,7 +1248,7 @@ async function executeAIEvaluation(projectId: string): Promise<any> {
             ]
           }
         }
-      });
+      }));
 
       const jsonText = response.text.trim();
       const evalResults = JSON.parse(jsonText);
@@ -1268,7 +1398,7 @@ ${fallbackResults.recommendations.map((r: string) => `• ${r}`).join("\n")}
   });
 }
 
-app.post("/api/evaluate/:project_id", authenticateToken, authorizeRoles("Admin"), async (req: Request, res: Response) => {
+app.post("/api/evaluate/:project_id", authenticateToken, authorizeRoles("Admin", "Judge"), async (req: Request, res: Response) => {
   try {
     const projectId = req.params.project_id;
     const aiEval = await executeAIEvaluation(projectId);
@@ -1278,8 +1408,9 @@ app.post("/api/evaluate/:project_id", authenticateToken, authorizeRoles("Admin")
   }
 });
 
-app.post("/api/evaluate-all", optionalAuthenticateToken, async (req: Request, res: Response) => {
+app.post("/api/evaluate-all", authenticateToken, authorizeRoles("Admin", "Judge"), async (req: Request, res: Response) => {
   try {
+    await db.refreshCollection("projects");
     const hackathonId = req.body.hackathonId || req.query.hackathonId;
     let projects = db.getProjects();
     if (hackathonId) {
@@ -1287,7 +1418,7 @@ app.post("/api/evaluate-all", optionalAuthenticateToken, async (req: Request, re
     }
     const results = [];
     for (const project of projects) {
-      console.log(`Mass Evaluation: grading ${project.projectName} (${project.id}) for hackathon ${hackathonId || 'all'}...`);
+      console.log(`Mass Evaluation: grading ${project.projectName} (${project.id}) for hackathon ${hackathonId || "all"}...`);
       const aiEval = await executeAIEvaluation(project.id);
       results.push(aiEval);
     }
@@ -1301,7 +1432,7 @@ app.post("/api/evaluate-all", optionalAuthenticateToken, async (req: Request, re
 // --- JUDGE EVALUATION / REVIEWS ---
 
 // POST /api/reviews
-app.post("/api/reviews", authenticateToken, authorizeRoles("Admin"), async (req: AuthRequest, res: Response) => {
+app.post("/api/reviews", authenticateToken, authorizeRoles("Admin", "Judge"), async (req: AuthRequest, res: Response) => {
   try {
     const { projectId, scores, feedback } = req.body;
     if (!projectId || !scores || !feedback) {
@@ -1361,6 +1492,92 @@ app.get("/api/leaderboard", async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/analytics/summary (Eliminates N+1 frontend fetches)
+app.get("/api/analytics/summary", optionalAuthenticateToken, async (req: Request, res: Response) => {
+  try {
+    await Promise.all([
+      db.refreshCollection("projects"),
+      db.refreshCollection("aiEvaluations"),
+      db.refreshCollection("judgeReviews"),
+      db.refreshCollection("githubAnalyses"),
+      db.refreshCollection("certificates"),
+      db.refreshCollection("hackathons")
+    ]);
+
+    const hackathonId = req.query.hackathonId as string | undefined;
+    let projList = db.getProjects();
+    if (hackathonId) {
+      projList = projList.filter(p => p.hackathonId === hackathonId);
+    }
+
+    const aiEvals = db.getAIEvaluations();
+    const ghAnalyses = db.getGitHubAnalyses();
+    const scoreChartData: any[] = [];
+    const languageTotals: Record<string, number> = {};
+    let reposWithLangs = 0;
+    let totalStars = 0;
+    let totalCommits = 0;
+    let ratedProjects = 0;
+
+    for (const p of projList) {
+      const ev = aiEvals.find(e => e.projectId === p.id);
+      if (ev) {
+        ratedProjects++;
+        scoreChartData.push({
+          name: p.projectName.split(":")[0].slice(0, 18),
+          fullName: p.projectName,
+          overall: ev.overallScore,
+          idea: ev.ideaScore,
+          innovation: ev.innovationScore,
+          codeQuality: ev.codeQualityScore,
+          readme: ev.readmeScore,
+          ui: ev.uiScore,
+          aiUsage: ev.aiUsageScore,
+          technical: ev.technicalScore
+        });
+      }
+
+      const gh = ghAnalyses.find(g => g.projectId === p.id);
+      if (gh) {
+        totalStars += gh.stars || 0;
+        totalCommits += gh.commits || 0;
+        const langs = Object.entries(gh.languages || {});
+        if (langs.length > 0) {
+          reposWithLangs++;
+          for (const [lang, pct] of langs) {
+            languageTotals[lang] = (languageTotals[lang] || 0) + Number(pct || 0);
+          }
+        }
+      }
+    }
+
+    const languageChartData = Object.entries(languageTotals)
+      .map(([name, val]) => ({
+        name,
+        value: Number((val / (reposWithLangs || 1)).toFixed(1))
+      }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 6);
+
+    const projectIds = new Set(projList.map(p => p.id));
+    const certificatesIssued = hackathonId
+      ? db.getCertificates().filter(c => projectIds.has(c.projectId)).length
+      : db.getCertificates().length;
+
+    res.json({
+      totalProjects: projList.length,
+      ratedProjects,
+      totalStars,
+      totalCommits,
+      certificatesIssued,
+      scoreChartData,
+      languageChartData
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 // --- COMMENTS ---
 
@@ -1391,18 +1608,27 @@ app.post("/api/comments", optionalAuthenticateToken, async (req: AuthRequest, re
 // --- AI EVALUATION ASSISTANT ---
 
 // POST /api/ai-judge-assistant
-app.post("/api/ai-judge-assistant", authenticateToken, authorizeRoles("Admin"), async (req: AuthRequest, res: Response) => {
+app.post("/api/ai-judge-assistant", authenticateToken, authorizeRoles("Admin", "Judge"), async (req: AuthRequest, res: Response) => {
   try {
-    const { query } = req.body;
-    if (!query) {
+    const { query, hackathonId } = req.body;
+    if (!query || !String(query).trim()) {
       res.status(400).json({ error: "Query is required." });
       return;
     }
 
-    const projects = db.getProjects();
+    await Promise.all([
+      db.refreshCollection("projects"),
+      db.refreshCollection("aiEvaluations"),
+      db.refreshCollection("judgeReviews")
+    ]);
+
+    let projects = db.getProjects();
+    if (hackathonId) {
+      projects = projects.filter(p => p.hackathonId === hackathonId);
+    }
     const aiEvaluations = db.getAIEvaluations();
     const judgeReviews = db.getJudgeReviews();
-    const leaderboard = db.getLeaderboard();
+    const leaderboard = db.getLeaderboard(hackathonId);
 
     // Construct Context
     let context = "HACKATHON EVALUATION DATA:\n\n";
@@ -1422,7 +1648,7 @@ app.post("/api/ai-judge-assistant", authenticateToken, authorizeRoles("Admin"), 
       context += `Members: ${p.teamMembers}\n`;
       context += `Description: ${p.description}\n`;
       context += `Problem Statement: ${p.problemStatement}\n`;
-      
+
       const aiEval = aiEvaluations.find(e => e.projectId === p.id);
       if (aiEval) {
         context += `AI Evaluation:\n`;
@@ -1454,62 +1680,74 @@ You must answer the user's questions based strictly and ONLY on the evaluation d
 - State scores, rankings, feedback, and code details precisely.
 - If comparing projects or teams, cite specific criteria scores (such as innovation, ui, or technical) and summarize the differences.
 - If the user's question cannot be answered with the provided data, politely tell them that you don't have that information.
-- Provide professional, structured, and insightful answers.`;
+- Provide clear, structured, and concise answers.`;
 
-    const prompt = `Context data:
-${context}
-
-User's query: "${query}"`;
+    const prompt = `Context data:\n${context}\n\nUser's query: "${query}"`;
 
     if (ai) {
-      const response = await ai.models.generateContent({
-        model: "gemini-3.5-flash",
-        contents: prompt,
-        config: {
-          systemInstruction: systemInstruction,
-        },
-      });
-      res.json({ answer: response.text });
-    } else {
-      // Robust local mock fallback matching typical questions if Gemini key is missing
-      console.log("Gemini API key is not set. Generating high-quality local fallback answer for query:", query);
-      let answer = "";
-      const qLower = query.toLowerCase();
-      if (qLower.includes("82") || qLower.includes("receive") || qLower.includes("points")) {
-        answer = `Based on the official evaluation data, we don't have a project that received exactly 82 points. However, we have **EcoSphere: Intelligent Carbon Offset Router** which currently leads the leaderboard with an AI overall score of **90.1** and a Judge average score of **88.6** (Combined Score: **89.2**).\n\nIf you'd like me to look into a specific team's score card, please name the project or team!`;
-      } else if (qLower.includes("compare")) {
-        const p1 = projects[0];
-        const p2 = projects[1];
-        if (p1 && p2) {
-          const eval1 = aiEvaluations.find(e => e.projectId === p1.id);
-          const eval2 = aiEvaluations.find(e => e.projectId === p2.id);
-          answer = `### Comparison: **${p1.projectName}** vs **${p2.projectName}**\n\n1. **Scores & Performance:**\n   - **${p1.projectName}** (Team: *${p1.teamName}*) is ranked **#1** with a combined score of **${leaderboard.find(l => l.projectId === p1.id)?.combinedScore || 90.1}** (AI overall score of **${eval1?.overallScore || 90.1}**, Judge average of **88.6**).\n   - **${p2.projectName}** (Team: *${p2.teamName}*) is ranked **#2** with a combined score of **${leaderboard.find(l => l.projectId === p2.id)?.combinedScore || 0}** (AI overall score is pending, and has no judge reviews yet).\n\n2. **Focus Area & Strengths:**\n   - **${p1.projectName}** focuses on carbon offset routing with machine learning, featuring deep shipping route analysis and beautiful responsive graphs. It scored exceptionally high in **UI (${eval1?.uiScore || 94})** and **Idea (${eval1?.ideaScore || 92})**.\n   - **${p2.projectName}** delivers real-time personalized quiz tracks and stress adaptive curriculum. This project is currently **pending AI and judge reviews**, so a detailed criteria breakdown is not yet available.\n\nLet me know if you would like to initiate an AI evaluation for ${p2.projectName}!`;
-        } else {
-          answer = `I can compare teams for you! Currently, there is only one fully evaluated project in the database: **EcoSphere: Intelligent Carbon Offset Router** (Team: *GreenEarth Developers*). Let me know if you add or evaluate more teams!`;
-        }
-      } else if (qLower.includes("strongest")) {
-        const sorted = [...leaderboard].sort((a, b) => b.combinedScore - a.combinedScore);
-        const top = sorted[0];
-        if (top) {
-          answer = `The strongest project currently is **${top.projectName}** submitted by **${top.teamName}**, with a combined score of **${top.combinedScore}**.\n\n**Strengths highlighted in evaluations:**\n- **AI Score:** ${top.aiOverallScore || "Pending"}\n- **Judge Score:** ${top.judgeAverageScore || "Pending"}\n- It has excellent scores across UI (**94**), Idea (**92**), and Technical complexity (**91**).\n\nOther projects like **EduPulse: AI Personal Tutor** are still awaiting reviews. Once they are evaluated, the rankings may update!`;
-        } else {
-          answer = `No project submissions have been evaluated yet. Once teams submit and evaluations are run, I can list the strongest projects here.`;
-        }
-      } else if (qLower.includes("highest innovation") || qLower.includes("innovation")) {
-        const sortedByInno = [...aiEvaluations].sort((a, b) => b.innovationScore - a.innovationScore);
-        if (sortedByInno.length > 0) {
-          const topInno = sortedByInno[0];
-          const proj = projects.find(p => p.id === topInno.projectId);
-          answer = `The project with the highest innovation score is **${proj?.projectName || "EcoSphere"}** with an Innovation Score of **${topInno.innovationScore}** out of 100.\n\n**Feedback on innovation:**\n*"The integration of spatial mapping with emissions analysis is robust and maps local metrics directly to certified credits using machine learning."*`;
-        } else {
-          answer = `No projects have been evaluated for innovation yet. Once AI or human evaluations are completed, I will analyze who has the highest innovation scores!`;
-        }
-      } else {
-        answer = `I am your AI Judge Assistant. I can help you analyze the hackathon evaluation data!\n\nHere is a summary of the current standings:\n- **Total Projects:** ${projects.length}\n- **Scored Projects:** ${projects.filter(p => p.status === "evaluated").length}\n\nAsk me specific questions like:\n- *"What are the strongest projects?"*\n- *"Which project has the highest innovation?"*\n- *"Compare EcoSphere and EduPulse."*`;
+      try {
+        const response = await withRetry(() => ai!.models.generateContent({
+          model: GEMINI_MODEL,
+          contents: prompt,
+          config: { systemInstruction }
+        }));
+        res.json({ answer: response.text });
+        return;
+      } catch (geminiErr: any) {
+        console.warn("Gemini Judge Assistant fallback triggered:", geminiErr.message);
       }
-
-      res.json({ answer });
     }
+
+    // Genuine data-driven deterministic fallback computed directly from current DB records
+    const qLower = String(query).toLowerCase();
+    const evaluatedItems = leaderboard.filter(l => l.aiOverallScore !== null || l.judgeAverageScore !== null);
+    let answer = "";
+
+    if (qLower.includes("compare") && leaderboard.length >= 2) {
+      const p1 = leaderboard[0];
+      const p2 = leaderboard[1];
+      const eval1 = aiEvaluations.find(e => e.projectId === p1.projectId);
+      const eval2 = aiEvaluations.find(e => e.projectId === p2.projectId);
+      answer = `Comparison of top two projects:\n\n` +
+        `1. ${p1.projectName} (${p1.teamName}) — Rank #${p1.rank}\n` +
+        `   - Combined Score: ${p1.combinedScore} | AI Score: ${p1.aiOverallScore ?? "Pending"} | Judge Avg: ${p1.judgeAverageScore ?? "Pending"}\n` +
+        (eval1 ? `   - Criteria: Technical ${eval1.technicalScore}, Innovation ${eval1.innovationScore}, Code Quality ${eval1.codeQualityScore}, UI ${eval1.uiScore}\n\n` : "\n") +
+        `2. ${p2.projectName} (${p2.teamName}) — Rank #${p2.rank}\n` +
+        `   - Combined Score: ${p2.combinedScore} | AI Score: ${p2.aiOverallScore ?? "Pending"} | Judge Avg: ${p2.judgeAverageScore ?? "Pending"}\n` +
+        (eval2 ? `   - Criteria: Technical ${eval2.technicalScore}, Innovation ${eval2.innovationScore}, Code Quality ${eval2.codeQualityScore}, UI ${eval2.uiScore}` : "   - Detailed criteria will appear once evaluation completes.");
+    } else if (qLower.includes("innovation") || qLower.includes("creative")) {
+      const projectIds = new Set(projects.map(p => p.id));
+      const relevantEvals = aiEvaluations.filter(e => projectIds.has(e.projectId));
+      const sortedByInno = [...relevantEvals].sort((a, b) => b.innovationScore - a.innovationScore);
+      if (sortedByInno.length > 0) {
+        const topInno = sortedByInno[0];
+        const proj = projects.find(p => p.id === topInno.projectId);
+        answer = `Highest Innovation Score: ${proj?.projectName || "Unknown"} (${proj?.teamName || ""}) with ${topInno.innovationScore}/100.\nOverall AI Score: ${topInno.overallScore}/100.`;
+      } else {
+        answer = "No projects in this scope have completed AI innovation scoring yet.";
+      }
+    } else if (qLower.includes("strongest") || qLower.includes("top") || qLower.includes("best") || qLower.includes("leader")) {
+      if (evaluatedItems.length > 0) {
+        const top = evaluatedItems[0];
+        answer = `Current Leading Submission: ${top.projectName} by ${top.teamName} (Combined Score: ${top.combinedScore}/100).\n` +
+          `Breakdown: AI Score = ${top.aiOverallScore ?? "Pending"}, Judge Average = ${top.judgeAverageScore ?? "Pending"}.\n\n` +
+          evaluatedItems.slice(0, 3).map(item => `#${item.rank} ${item.projectName} — Combined: ${item.combinedScore}`).join("\n");
+      } else {
+        answer = `There are ${projects.length} project(s) submitted, but none have completed scoring yet. Run AI grading or submit a jury scorecard first.`;
+      }
+    } else if (qLower.includes("pending") || qLower.includes("unreviewed") || qLower.includes("missing")) {
+      const pending = projects.filter(p => p.status !== "evaluated");
+      answer = pending.length > 0
+        ? `${pending.length} project(s) are still pending AI evaluation:\n` + pending.map(p => `- ${p.projectName} (${p.teamName})`).join("\n")
+        : `All ${projects.length} project(s) in this scope have been evaluated.`;
+    } else {
+      const topLine = evaluatedItems[0]
+        ? `Current #1: ${evaluatedItems[0].projectName} (${evaluatedItems[0].combinedScore}/100).`
+        : "No scored submissions yet.";
+      answer = `Summary for current scope (${projects.length} total submissions, ${evaluatedItems.length} scored):\n${topLine}\n\nTry asking:\n- "Which project is the strongest overall?"\n- "Which project has the highest innovation score?"\n- "Compare the top two projects"\n- "Which submissions are still pending evaluation?"`;
+    }
+
+    res.json({ answer });
   } catch (error: any) {
     console.error("AI Judge Assistant error:", error);
     res.status(500).json({ error: error.message });
@@ -1578,16 +1816,76 @@ app.post("/api/admin/certificates", authenticateToken, authorizeRoles("Admin"), 
       return;
     }
 
+    const hk = db.getHackathons().find(h => h.id === proj.hackathonId);
+
     const cert = await db.issueCertificate({
       projectId,
       projectName: proj.projectName,
       teamName: proj.teamName,
-      recipientEmail,
-      recipientName,
-      role
+      hackathonName: hk?.name || "HackEval Academic Hackathon",
+      recipientEmail: String(recipientEmail).trim().toLowerCase(),
+      recipientName: String(recipientName).trim(),
+      role: String(role).trim()
     });
 
     res.status(201).json(cert);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/admin/certificates/batch
+app.post("/api/admin/certificates/batch", authenticateToken, authorizeRoles("Admin"), async (req: Request, res: Response) => {
+  try {
+    const { projectId, recipients, role } = req.body;
+    if (!projectId || !Array.isArray(recipients) || recipients.length === 0 || !role) {
+      res.status(400).json({ error: "Project ID, non-empty recipients list, and role are required." });
+      return;
+    }
+
+    const proj = db.getProjects().find(p => p.id === projectId);
+    if (!proj) {
+      res.status(404).json({ error: "Associated project submission not found." });
+      return;
+    }
+
+    const hk = db.getHackathons().find(h => h.id === proj.hackathonId);
+    const issued: any[] = [];
+
+    for (const r of recipients) {
+      const rName = String(r?.name || "").trim();
+      const rEmail = String(r?.email || "").trim().toLowerCase();
+      if (!rName || !rEmail) continue;
+
+      const cert = await db.issueCertificate({
+        projectId,
+        projectName: proj.projectName,
+        teamName: proj.teamName,
+        hackathonName: hk?.name || "HackEval Academic Hackathon",
+        recipientEmail: rEmail,
+        recipientName: rName,
+        role: String(role).trim()
+      });
+      issued.push(cert);
+    }
+
+    res.status(201).json({ issuedCount: issued.length, certificates: issued });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/certificates/verify/:code (Public verification endpoint)
+app.get("/api/certificates/verify/:code", async (req: Request, res: Response) => {
+  try {
+    await db.refreshCollection("certificates");
+    const code = String(req.params.code || "").trim().toUpperCase();
+    const cert = db.getCertificates().find(c => c.certificateCode.toUpperCase() === code);
+    if (!cert) {
+      res.status(404).json({ valid: false, error: "Certificate verification code not found." });
+      return;
+    }
+    res.json({ valid: true, certificate: cert });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -1598,17 +1896,19 @@ app.get("/api/certificates", optionalAuthenticateToken, async (req: AuthRequest,
   try {
     await db.refreshCollection("certificates");
     let list = db.getCertificates();
-    // Non-admins can only see their own certificates or query by specific verification code
-    if (req.user?.role !== "Admin") {
-      const code = req.query.code as string;
-      const email = req.user?.email || (req.query.email as string);
-      if (code) {
-        list = list.filter(c => c.certificateCode.toUpperCase() === code.toUpperCase());
-      } else if (email) {
-        list = list.filter(c => c.recipientEmail.toLowerCase() === email.toLowerCase());
-      } else {
-        list = [];
-      }
+    const code = (req.query.code as string || "").trim();
+    const queryEmail = (req.query.email as string || "").trim();
+
+    if (code) {
+      list = list.filter(c => c.certificateCode.toUpperCase() === code.toUpperCase());
+    } else if (queryEmail) {
+      list = list.filter(c => c.recipientEmail.toLowerCase() === queryEmail.toLowerCase());
+    } else if (req.user?.role === "Admin") {
+      // Admin sees full registry
+    } else if (req.user?.email) {
+      list = list.filter(c => c.recipientEmail.toLowerCase() === req.user!.email.toLowerCase());
+    } else {
+      list = [];
     }
     res.json(list);
   } catch (error: any) {
@@ -1651,6 +1951,12 @@ app.post("/api/analyze-website", authenticateToken, async (req: Request, res: Re
       return;
     }
 
+    const safeTargetUrl = validatePublicHttpUrl(String(url));
+    if (!safeTargetUrl) {
+      res.status(400).json({ error: "Invalid or restricted target URL. Only public http:// or https:// endpoints are permitted." });
+      return;
+    }
+
     let available = false;
     let statusCode = 0;
     let responseTimeMs = 0;
@@ -1659,15 +1965,14 @@ app.post("/api/analyze-website", authenticateToken, async (req: Request, res: Re
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 4000);
-      const fetchUrl = url.startsWith("http://") || url.startsWith("https://") ? url : `https://${url}`;
-      const response = await fetch(fetchUrl, { signal: controller.signal, method: "HEAD" }).catch(() => null);
+      const response = await fetch(safeTargetUrl, { signal: controller.signal, method: "HEAD", redirect: "manual" }).catch(() => null);
       clearTimeout(timeoutId);
       responseTimeMs = Date.now() - startTime;
       if (response) {
         available = true;
         statusCode = response.status;
       }
-    } catch (e) {
+    } catch {
       responseTimeMs = Date.now() - startTime;
     }
 
@@ -1683,7 +1988,7 @@ app.post("/api/analyze-website", authenticateToken, async (req: Request, res: Re
       try {
         const prompt = `
           You are an expert full-stack engineer and web standards auditor.
-          Analyze the live website URL: "${url}" for a hackathon project submission.
+          Analyze the live website URL: "${safeTargetUrl}" for a hackathon project submission.
           
           If you cannot reach or retrieve the content, formulate your audit conceptually using your knowledge of typical modern frameworks, web engineering standards, and common design systems (Tailwind, React).
           
@@ -1691,8 +1996,8 @@ app.post("/api/analyze-website", authenticateToken, async (req: Request, res: Re
           
           The output MUST match the schema.
         `;
-        const response = await ai.models.generateContent({
-          model: "gemini-3.5-flash",
+        const response = await withRetry(() => ai!.models.generateContent({
+          model: GEMINI_MODEL,
           contents: prompt,
           config: {
             responseMimeType: "application/json",
@@ -1730,7 +2035,7 @@ app.post("/api/analyze-website", authenticateToken, async (req: Request, res: Re
               ]
             }
           }
-        });
+        }));
         if (response.text) {
           const parsed = JSON.parse(response.text);
           performance_score = parsed.performance_score;
@@ -1808,7 +2113,7 @@ app.get("/api/hackathons", async (req: Request, res: Response) => {
   }
 });
 
-app.post("/api/hackathons", optionalAuthenticateToken, async (req: Request, res: Response) => {
+app.post("/api/hackathons", authenticateToken, authorizeRoles("Admin"), async (req: Request, res: Response) => {
   try {
     const { name, description, startDate, endDate, active } = req.body;
     if (!name || !description || !startDate || !endDate) {
@@ -1817,10 +2122,10 @@ app.post("/api/hackathons", optionalAuthenticateToken, async (req: Request, res:
     }
 
     const newHk = await db.createHackathon({
-      name,
-      description,
-      startDate,
-      endDate,
+      name: String(name).trim(),
+      description: String(description).trim(),
+      startDate: String(startDate).trim(),
+      endDate: String(endDate).trim(),
       active: !!active
     });
     res.status(201).json(newHk);
@@ -1831,7 +2136,15 @@ app.post("/api/hackathons", optionalAuthenticateToken, async (req: Request, res:
 
 app.put("/api/hackathons/:id", authenticateToken, authorizeRoles("Admin"), async (req: Request, res: Response) => {
   try {
-    const updated = await db.updateHackathon(req.params.id, req.body);
+    const { name, description, startDate, endDate, active } = req.body;
+    const sanitizedUpdates: Record<string, any> = {};
+    if (name !== undefined) sanitizedUpdates.name = String(name).trim();
+    if (description !== undefined) sanitizedUpdates.description = String(description).trim();
+    if (startDate !== undefined) sanitizedUpdates.startDate = String(startDate).trim();
+    if (endDate !== undefined) sanitizedUpdates.endDate = String(endDate).trim();
+    if (active !== undefined) sanitizedUpdates.active = Boolean(active);
+
+    const updated = await db.updateHackathon(req.params.id, sanitizedUpdates);
     if (!updated) {
       res.status(404).json({ error: "Hackathon event was not found." });
       return;

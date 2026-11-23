@@ -3,7 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import bcrypt from "bcryptjs";
 import { initializeApp } from "firebase/app";
-import { initializeFirestore, doc, setDoc, deleteDoc, getDocs, collection } from "firebase/firestore";
+import { initializeFirestore, doc, setDoc, deleteDoc, getDocs, getDocFromServer, collection } from "firebase/firestore";
 import firebaseAppletConfig from "../firebase-applet-config.json";
 
 import {
@@ -126,6 +126,7 @@ class LocalDB {
   private initPromise: Promise<void> | null = null;
   private isInitialized = false;
   private lastRefreshTime = 0;
+  private collectionRefreshTimes: Record<string, number> = {};
 
   constructor() {
     this.init(); // Sync fallback init so we don't start with undefined/empty state before async completes
@@ -139,15 +140,14 @@ class LocalDB {
       this.initPromise = this.initFirebase();
     }
     await this.initPromise;
-    await this.refresh();
   }
 
   async refresh(force = false): Promise<void> {
     if (!dbFirestore) return;
 
     const now = Date.now();
-    // Throttle refresh to once every 5 seconds to avoid excessive reads
-    if (!force && now - this.lastRefreshTime < 5000) {
+    // Throttle full refresh to once every 30 seconds to avoid excessive Firestore reads
+    if (!force && now - this.lastRefreshTime < 30000) {
       return;
     }
 
@@ -169,6 +169,7 @@ class LocalDB {
           } else {
             this.state[colName as keyof DBState] = [];
           }
+          this.collectionRefreshTimes[colName] = Date.now();
         } catch (colErr) {
           console.error(`Failed to refresh collection ${colName}:`, colErr);
         }
@@ -180,8 +181,13 @@ class LocalDB {
     }
   }
 
-  async refreshCollection(colName: keyof DBState): Promise<void> {
+  async refreshCollection(colName: keyof DBState, force = false): Promise<void> {
     if (!dbFirestore) return;
+    const now = Date.now();
+    const lastColRefresh = this.collectionRefreshTimes[colName] || 0;
+    if (!force && now - lastColRefresh < 10000) {
+      return;
+    }
     try {
       const querySnapshot = await withTimeout(getDocs(collection(dbFirestore, colName)), 4000, `refresh single collection ${colName}`);
       if (!querySnapshot.empty) {
@@ -193,6 +199,7 @@ class LocalDB {
       } else {
         this.state[colName] = [];
       }
+      this.collectionRefreshTimes[colName] = Date.now();
     } catch (err) {
       console.error(`Failed to refresh individual collection ${colName}:`, err);
     }
@@ -206,6 +213,15 @@ class LocalDB {
     }
 
     try {
+      // Connection validation check
+      try {
+        await withTimeout(getDocFromServer(doc(dbFirestore, "test", "connection")), 3000, "testConnection");
+      } catch (connErr: any) {
+        if (connErr?.message?.includes("the client is offline")) {
+          console.error("Firestore connection check: client is offline. Please verify Firebase configuration.");
+        }
+      }
+
       console.log("Loading data from Firestore with safe timeouts...");
       const collectionsList = [
         "users", "teams", "participants", "hackathons", "projects", 
@@ -820,7 +836,11 @@ class LocalDB {
 
   // CERTIFICATES
   async issueCertificate(cert: Omit<Certificate, "id" | "issuedAt" | "certificateCode">): Promise<Certificate> {
-    const certificateCode = "CERT-" + Math.floor(100000 + Math.random() * 900000);
+    let certificateCode = "";
+    do {
+      certificateCode = "CERT-" + Math.floor(100000 + Math.random() * 900000);
+    } while (this.state.certificates.some(c => c.certificateCode === certificateCode));
+
     const newCert: Certificate = {
       ...cert,
       id: "cert_" + Math.random().toString(36).substr(2, 9),

@@ -141,12 +141,14 @@
         "projectId": { "type": "string" },
         "projectName": { "type": "string" },
         "teamName": { "type": "string" },
+        "hackathonName": { "type": "string" },
         "recipientEmail": { "type": "string" },
         "recipientName": { "type": "string" },
         "role": { "type": "string" },
-        "issuedAt": { "type": "string" }
+        "issuedAt": { "type": "string" },
+        "certificateCode": { "type": "string" }
       },
-      "required": ["id", "projectId", "recipientEmail", "recipientName", "role"]
+      "required": ["id", "projectId", "recipientEmail", "recipientName", "role", "certificateCode"]
     },
     "liveAnalyses": {
       "title": "LiveAnalysisResult",

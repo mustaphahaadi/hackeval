@@ -1,19 +1,32 @@
 import React, { useState, useRef, useEffect } from "react";
-import { FolderGit, Upload, Globe, Link, Youtube, HelpCircle, Sparkles, Check, AlertCircle } from "lucide-react";
-import { HackathonEvent } from "../types";
+import {
+  FolderGit,
+  Upload,
+  Globe,
+  Link as LinkIcon,
+  Youtube,
+  Sparkles,
+  Check,
+  AlertCircle
+} from "lucide-react";
+import { HackathonEvent, UserRole } from "../types";
 
 interface ProjectSubmissionFormProps {
   token?: string;
+  currentUser?: {
+    role?: UserRole;
+  } | null;
   preselectedHackathonId?: string | null;
   onSuccess: (hackathonId?: string) => void;
   onCancel: () => void;
 }
 
-export function ProjectSubmissionForm({ 
-  token, 
-  preselectedHackathonId, 
-  onSuccess, 
-  onCancel 
+export function ProjectSubmissionForm({
+  token,
+  currentUser,
+  preselectedHackathonId,
+  onSuccess,
+  onCancel
 }: ProjectSubmissionFormProps) {
   const [projectName, setProjectName] = useState("");
   const [teamName, setTeamName] = useState("");
@@ -24,8 +37,9 @@ export function ProjectSubmissionForm({
   const [aiStudioUrl, setAiStudioUrl] = useState("");
   const [liveUrl, setLiveUrl] = useState("");
   const [demoVideoUrl, setDemoVideoUrl] = useState("");
+  const [presentationDocUrl, setPresentationDocUrl] = useState("");
   const [docFile, setDocFile] = useState<File | null>(null);
-  
+
   const [hackathonsList, setHackathonsList] = useState<HackathonEvent[]>([]);
   const [selectedHackathonId, setSelectedHackathonId] = useState("");
   const [dragActive, setDragActive] = useState(false);
@@ -33,7 +47,8 @@ export function ProjectSubmissionForm({
   const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // States for on-the-fly Hackathon Setup
+  // Admin on-the-fly Hackathon Setup
+  const isAdmin = currentUser?.role === "Admin";
   const [showCreateHkForm, setShowCreateHkForm] = useState(false);
   const [newHkName, setNewHkName] = useState("");
   const [newHkDesc, setNewHkDesc] = useState("");
@@ -48,20 +63,12 @@ export function ProjectSubmissionForm({
     setHkSuccessMsg("");
 
     if (!newHkName || !newHkDesc || !newHkStart || !newHkEnd) {
-      setError("Please fill out all fields to set up a new hackathon project.");
+      setError("Please fill out all fields to set up a new hackathon event.");
       return;
     }
 
     setCreatingHk(true);
     try {
-      const body = {
-        name: newHkName,
-        description: newHkDesc,
-        startDate: newHkStart,
-        endDate: newHkEnd,
-        active: true
-      };
-
       const headers: Record<string, string> = {
         "Content-Type": "application/json"
       };
@@ -72,7 +79,13 @@ export function ProjectSubmissionForm({
       const res = await fetch("/api/hackathons", {
         method: "POST",
         headers,
-        body: JSON.stringify(body)
+        body: JSON.stringify({
+          name: newHkName,
+          description: newHkDesc,
+          startDate: newHkStart,
+          endDate: newHkEnd,
+          active: true
+        })
       });
 
       const data = await res.json();
@@ -80,13 +93,11 @@ export function ProjectSubmissionForm({
         throw new Error(data.error || "Failed to set up new hackathon.");
       }
 
-      // Add to list, select it, and close form
-      setHackathonsList(prev => [...prev, data]);
+      setHackathonsList((prev) => [...prev, data]);
       setSelectedHackathonId(data.id);
-      setHkSuccessMsg(`Successfully set up Hackathon: "${data.name}"! It is now selected.`);
+      setHkSuccessMsg(`Created hackathon "${data.name}" and selected it for your entry.`);
       setShowCreateHkForm(false);
-      
-      // Clear inputs
+
       setNewHkName("");
       setNewHkDesc("");
       setNewHkStart("");
@@ -105,12 +116,11 @@ export function ProjectSubmissionForm({
         if (res.ok) {
           const data: HackathonEvent[] = await res.json();
           setHackathonsList(data);
-          
+
           if (preselectedHackathonId) {
             setSelectedHackathonId(preselectedHackathonId);
           } else {
-            // Auto select active hackathon or first one
-            const active = data.find(h => h.active);
+            const active = data.find((h) => h.active);
             if (active) {
               setSelectedHackathonId(active.id);
             } else if (data.length > 0) {
@@ -155,14 +165,16 @@ export function ProjectSubmissionForm({
     setError("");
 
     if (!projectName || !teamName || !description || !problemStatement || !githubUrl) {
-      setError("Please fill out all mandatory fields: Project Name, Team Name, Description, Problem Statement, and GitHub Repository URL.");
+      setError(
+        "Please fill out all mandatory fields: Project Name, Team Name, Description, Problem Statement, and GitHub Repository URL."
+      );
       return;
     }
 
     setLoading(true);
 
     try {
-      // Create the submission body
+      const trimmedDocUrl = presentationDocUrl.trim();
       const body = {
         projectName,
         teamName,
@@ -173,8 +185,8 @@ export function ProjectSubmissionForm({
         aiStudioUrl,
         liveUrl,
         demoVideoUrl,
-        presentationDocName: docFile ? docFile.name : "slides.pdf",
-        presentationDocUrl: docFile ? `https://example.com/uploads/${docFile.name}` : "https://example.com/slides.pdf",
+        presentationDocName: docFile ? docFile.name : trimmedDocUrl ? "Presentation Deck" : "",
+        presentationDocUrl: trimmedDocUrl,
         hackathonId: selectedHackathonId
       };
 
@@ -212,14 +224,14 @@ export function ProjectSubmissionForm({
           Submit Hackathon Entry
         </h2>
         <p className="text-sm text-slate-500 mt-1">
-          Complete the 10 fields below to register your product prototype. All submissions are automatically evaluated by our AI evaluator upon receipt.
+          Complete the project details below to register your submission. Public GitHub repositories are queued for automated evaluation and leaderboard indexing.
         </p>
       </div>
 
       {error && (
-        <div className="mb-6 bg-rose-50 border-l-4 border-rose-500 p-4 rounded-r-lg flex gap-2 text-rose-700 text-sm font-medium">
+        <div className="mb-6 bg-rose-50 border border-rose-200 p-4 rounded-xl flex gap-2 text-rose-700 text-sm font-medium items-center">
           <AlertCircle className="w-5 h-5 text-rose-500 shrink-0" />
-          {error}
+          <span>{error}</span>
         </div>
       )}
 
@@ -227,68 +239,86 @@ export function ProjectSubmissionForm({
         {/* Hackathon Selection */}
         <div>
           <div className="flex justify-between items-center mb-1">
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">Target Hackathon *</label>
-            <button
-              type="button"
-              onClick={() => { setShowCreateHkForm(!showCreateHkForm); setHkSuccessMsg(""); setError(""); }}
-              className="text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1 cursor-pointer bg-none border-none p-0"
-            >
-              {showCreateHkForm ? "Cancel setup" : "+ Set up a new Hackathon"}
-            </button>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+              Target Hackathon *
+            </label>
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCreateHkForm(!showCreateHkForm);
+                  setHkSuccessMsg("");
+                  setError("");
+                }}
+                className="text-xs font-bold text-indigo-600 hover:text-indigo-800 hover:underline flex items-center gap-1 cursor-pointer bg-none border-none p-0"
+              >
+                {showCreateHkForm ? "Cancel setup" : "+ Set up a new Hackathon"}
+              </button>
+            )}
           </div>
 
           {hkSuccessMsg && (
-            <div className="mb-4 bg-emerald-50 border-l-4 border-emerald-500 p-3 rounded-r-lg text-emerald-700 text-xs font-medium flex items-center gap-1.5">
-              <Check className="w-4 h-4 text-emerald-600" />
-              {hkSuccessMsg}
+            <div className="mb-4 bg-emerald-50 border border-emerald-200 p-3 rounded-xl text-emerald-800 text-xs font-medium flex items-center gap-1.5">
+              <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{hkSuccessMsg}</span>
             </div>
           )}
 
-          {showCreateHkForm && (
+          {isAdmin && showCreateHkForm && (
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-4 space-y-3 animate-fade-in">
               <div className="flex items-center gap-1.5">
                 <Sparkles className="w-4 h-4 text-indigo-600" />
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">Set Up New Hackathon Event</h4>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                  Set Up New Hackathon Event
+                </h4>
               </div>
-              
+
               <div className="grid grid-cols-1 gap-3">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Event Name *</label>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-0.5">
+                    Event Name *
+                  </label>
                   <input
                     type="text"
                     value={newHkName}
                     onChange={(e) => setNewHkName(e.target.value)}
                     placeholder="e.g. PennApps Fall 2026"
-                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:outline-none"
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Description *</label>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-0.5">
+                    Description *
+                  </label>
                   <textarea
                     rows={2}
                     value={newHkDesc}
                     onChange={(e) => setNewHkDesc(e.target.value)}
-                    placeholder="e.g. Premium academic innovation hackathon focused on AI and web solutions."
-                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:outline-none"
+                    placeholder="e.g. Academic innovation hackathon focused on AI and web solutions."
+                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 mb-0.5">Start Date *</label>
+                    <label className="block text-[10px] font-bold text-slate-500 mb-0.5">
+                      Start Date *
+                    </label>
                     <input
                       type="date"
                       value={newHkStart}
                       onChange={(e) => setNewHkStart(e.target.value)}
-                      className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:outline-none"
+                      className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate-500 mb-0.5">End Date *</label>
+                    <label className="block text-[10px] font-bold text-slate-500 mb-0.5">
+                      End Date *
+                    </label>
                     <input
                       type="date"
                       value={newHkEnd}
                       onChange={(e) => setNewHkEnd(e.target.value)}
-                      className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:outline-none"
+                      className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                     />
                   </div>
                 </div>
@@ -324,20 +354,22 @@ export function ProjectSubmissionForm({
             ) : (
               hackathonsList.map((hk) => (
                 <option key={hk.id} value={hk.id}>
-                  {hk.name} {hk.active ? "(Active Now)" : ""}
+                  {hk.name} {hk.active ? "(Active)" : "(Ended)"}
                 </option>
               ))
             )}
           </select>
           <p className="text-[11px] text-slate-400 mt-1">
-            Choose the specific event you are establishing this submission under.
+            Select the hackathon event you are submitting this project under.
           </p>
         </div>
 
         {/* Row 1: Project & Team Name */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Project Name *</label>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
+              Project Name *
+            </label>
             <input
               type="text"
               required
@@ -348,7 +380,9 @@ export function ProjectSubmissionForm({
             />
           </div>
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Team Name *</label>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
+              Team Name *
+            </label>
             <input
               type="text"
               required
@@ -362,7 +396,9 @@ export function ProjectSubmissionForm({
 
         {/* Row 2: Team Members */}
         <div>
-          <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Team Members (Comma Separated)</label>
+          <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
+            Team Members (Comma Separated)
+          </label>
           <input
             type="text"
             value={teamMembers}
@@ -374,20 +410,24 @@ export function ProjectSubmissionForm({
 
         {/* Description */}
         <div>
-          <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Project Description *</label>
+          <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
+            Project Description *
+          </label>
           <textarea
             required
             rows={4}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Give a deep overview of how your product works, the architecture, and core features..."
+            placeholder="Give an overview of how your product works, its architecture, and core features..."
             className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none"
           />
         </div>
 
         {/* Problem Statement */}
         <div>
-          <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Problem Statement *</label>
+          <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
+            Problem Statement *
+          </label>
           <textarea
             required
             rows={3}
@@ -460,48 +500,73 @@ export function ProjectSubmissionForm({
           </div>
         </div>
 
-        {/* Drag and Drop Presentation Doc Upload */}
-        <div>
-          <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Presentation Document Upload</label>
-          <div
-            onDragEnter={handleDrag}
-            onDragOver={handleDrag}
-            onDragLeave={handleDrag}
-            onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-            className={`mt-1 border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center text-center cursor-pointer transition-colors ${
-              dragActive 
-                ? "border-indigo-500 bg-indigo-50/40" 
-                : docFile 
-                ? "border-emerald-300 bg-emerald-50/20" 
-                : "border-slate-300 hover:border-indigo-400 bg-slate-50/50"
-            }`}
-          >
+        {/* Presentation Deck URL + Local File Name */}
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-1.5">
+              <LinkIcon className="w-3.5 h-3.5 text-slate-400" />
+              Presentation Deck / Slides URL (Optional)
+            </label>
             <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,.pptx,.ppt,.docx"
-              onChange={handleFileChange}
-              className="hidden"
+              type="url"
+              value={presentationDocUrl}
+              onChange={(e) => setPresentationDocUrl(e.target.value)}
+              placeholder="https://docs.google.com/presentation/..."
+              className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm shadow-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none"
             />
-            
-            {docFile ? (
-              <div className="flex flex-col items-center">
-                <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-600 mb-2">
-                  <Check className="w-6 h-6" />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
+              Presentation File Attachment Name (Optional)
+            </label>
+            <div
+              onDragEnter={handleDrag}
+              onDragOver={handleDrag}
+              onDragLeave={handleDrag}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              className={`mt-1 border-2 border-dashed rounded-xl p-5 flex flex-col items-center justify-center text-center cursor-pointer transition-colors ${
+                dragActive
+                  ? "border-indigo-500 bg-indigo-50/40"
+                  : docFile
+                  ? "border-emerald-300 bg-emerald-50/30"
+                  : "border-slate-300 hover:border-indigo-400 bg-slate-50/50"
+              }`}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.pptx,.ppt,.docx"
+                onChange={handleFileChange}
+                className="hidden"
+              />
+
+              {docFile ? (
+                <div className="flex flex-col items-center">
+                  <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-600 mb-2">
+                    <Check className="w-6 h-6" />
+                  </div>
+                  <p className="text-sm font-semibold text-slate-800">{docFile.name}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {(docFile.size / (1024 * 1024)).toFixed(2)} MB • Reference attached
+                  </p>
                 </div>
-                <p className="text-sm font-semibold text-slate-800">{docFile.name}</p>
-                <p className="text-xs text-slate-500 mt-0.5">{(docFile.size / (1024 * 1024)).toFixed(2)} MB • File selected</p>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center">
-                <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-500 mb-2">
-                  <Upload className="w-5 h-5" />
+              ) : (
+                <div className="flex flex-col items-center">
+                  <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-500 mb-2">
+                    <Upload className="w-5 h-5" />
+                  </div>
+                  <p className="text-sm font-semibold text-slate-700">
+                    Drag & drop your slide deck here, or{" "}
+                    <span className="text-indigo-600 font-bold">browse</span>
+                  </p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Supports PDF, PPTX, PPT, DOCX metadata references (pair with Deck URL above for direct reviewer viewing)
+                  </p>
                 </div>
-                <p className="text-sm font-semibold text-slate-700">Drag & drop your presentation slides here, or <span className="text-indigo-600 font-bold">browse</span></p>
-                <p className="text-xs text-slate-400 mt-1">Supports PDF, PPTX, PPT, DOCX up to 15MB</p>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
 
@@ -517,7 +582,7 @@ export function ProjectSubmissionForm({
           <button
             type="submit"
             disabled={loading}
-            className="px-5 py-2 text-white bg-indigo-600 hover:bg-indigo-700 text-sm font-semibold rounded-lg shadow-sm transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            className="px-5 py-2 text-white bg-indigo-600 hover:bg-indigo-700 text-sm font-semibold rounded-lg shadow-sm transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
           >
             {loading ? (
               <span className="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white" />

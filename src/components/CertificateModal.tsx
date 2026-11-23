@@ -1,17 +1,16 @@
-import React from "react";
-import { X, Printer, ShieldCheck, Download, Award, Calendar, CheckCircle2 } from "lucide-react";
-
-interface Certificate {
-  id: string;
-  projectId: string;
-  projectName: string;
-  teamName: string;
-  recipientEmail: string;
-  recipientName: string;
-  role: string;
-  issuedAt: string;
-  certificateCode: string;
-}
+import React, { useState, useEffect } from "react";
+import {
+  X, Printer, ShieldCheck, Download, Award, CheckCircle2,
+  Copy, Check, FileDown, Image as ImageIcon, Loader2
+} from "lucide-react";
+import { Certificate } from "../types";
+import {
+  getAwardTheme,
+  generateCertificateQrDataUrl,
+  getCertificateVerificationUrl,
+  downloadCertificatePdf,
+  downloadCertificatePng
+} from "../utils/certificateGenerator.js";
 
 interface CertificateModalProps {
   certificate: Certificate | null;
@@ -20,86 +19,79 @@ interface CertificateModalProps {
 }
 
 export function CertificateModal({ certificate, isOpen, onClose }: CertificateModalProps) {
+  const [qrDataUrl, setQrDataUrl] = useState<string>("");
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [downloadingPng, setDownloadingPng] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [exportError, setExportError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    if (isOpen && certificate?.certificateCode) {
+      setExportError("");
+      generateCertificateQrDataUrl(certificate.certificateCode)
+        .then((url) => {
+          if (active) setQrDataUrl(url);
+        })
+        .catch(() => {
+          if (active) setQrDataUrl("");
+        });
+    }
+    return () => {
+      active = false;
+    };
+  }, [isOpen, certificate?.certificateCode]);
+
   if (!isOpen || !certificate) return null;
 
-  const formattedDate = new Date(certificate.issuedAt).toLocaleDateString(undefined, {
+  const formattedDate = new Date(certificate.issuedAt).toLocaleDateString("en-US", {
     year: "numeric",
     month: "long",
     day: "numeric",
   });
 
+  const theme = getAwardTheme(certificate.role);
+
   const handlePrint = () => {
     window.print();
   };
 
-  // Helper to get styling attributes based on the award rank/role
-  const getAwardDecoration = (role: string) => {
-    const r = role.toLowerCase();
-    if (r.includes("first")) {
-      return {
-        borderColor: "border-amber-400",
-        sealBg: "bg-gradient-to-br from-amber-400 via-yellow-500 to-amber-600",
-        ribbonColor: "bg-amber-600",
-        badgeText: "🥇 First Place Champion",
-        sealText: "1ST PLACE",
-        sub: "Grand Prize Winner",
-      };
-    } else if (r.includes("second")) {
-      return {
-        borderColor: "border-slate-400",
-        sealBg: "bg-gradient-to-br from-slate-300 via-slate-400 to-zinc-500",
-        ribbonColor: "bg-slate-500",
-        badgeText: "🥈 Second Place Silver Medalist",
-        sealText: "2ND PLACE",
-        sub: "First Runner-Up",
-      };
-    } else if (r.includes("third")) {
-      return {
-        borderColor: "border-amber-700/60",
-        sealBg: "bg-gradient-to-br from-amber-600 via-amber-700 to-amber-800",
-        ribbonColor: "bg-amber-800",
-        badgeText: "🥉 Third Place Bronze Medalist",
-        sealText: "3RD PLACE",
-        sub: "Second Runner-Up",
-      };
-    } else if (r.includes("best ai") || r.includes("integration")) {
-      return {
-        borderColor: "border-indigo-400",
-        sealBg: "bg-gradient-to-br from-indigo-500 via-purple-500 to-indigo-700",
-        ribbonColor: "bg-indigo-600",
-        badgeText: "✨ Best Artificial Intelligence Integration",
-        sealText: "AI SPECIAL",
-        sub: "Technical Excellence",
-      };
-    } else if (r.includes("finalist") || r.includes("outstanding")) {
-      return {
-        borderColor: "border-cyan-400",
-        sealBg: "bg-gradient-to-br from-cyan-400 via-sky-500 to-indigo-600",
-        ribbonColor: "bg-cyan-600",
-        badgeText: "⭐ Outstanding Finalist Award",
-        sealText: "FINALIST",
-        sub: "Outstanding Innovator",
-      };
-    } else {
-      return {
-        borderColor: "border-slate-300",
-        sealBg: "bg-gradient-to-br from-slate-400 via-slate-500 to-slate-600",
-        ribbonColor: "bg-slate-600",
-        badgeText: "🎓 Official Completion Certificate",
-        sealText: "COMPLETED",
-        sub: "Successful Submission",
-      };
+  const handleDownloadPdf = async () => {
+    setExportError("");
+    setDownloadingPdf(true);
+    try {
+      await downloadCertificatePdf(certificate);
+    } catch (err: any) {
+      setExportError(err?.message || "Failed to generate A4 PDF.");
+    } finally {
+      setDownloadingPdf(false);
     }
   };
 
-  const decor = getAwardDecoration(certificate.role);
+  const handleDownloadPng = async () => {
+    setExportError("");
+    setDownloadingPng(true);
+    try {
+      await downloadCertificatePng(certificate);
+    } catch (err: any) {
+      setExportError(err?.message || "Failed to export certificate PNG.");
+    } finally {
+      setDownloadingPng(false);
+    }
+  };
+
+  const handleCopyVerifyLink = () => {
+    const url = getCertificateVerificationUrl(certificate.certificateCode);
+    navigator.clipboard.writeText(url);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm overflow-y-auto">
-      {/* Dynamic style tag for high-fidelity print layout configuration */}
+      {/* Dynamic style tag for clean A4 landscape printing */}
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
-          /* Hide all application chrome, scrollbars, and buttons */
           body * {
             visibility: hidden !important;
             background: none !important;
@@ -114,14 +106,14 @@ export function CertificateModal({ certificate, isOpen, onClose }: CertificateMo
             width: 297mm !important;
             height: 210mm !important;
             margin: 0 !important;
-            padding: 0 !important;
+            padding: 28px !important;
             z-index: 9999999 !important;
             background-color: white !important;
-            display: block !important;
+            display: flex !important;
             box-shadow: none !important;
             border: none !important;
+            border-radius: 0 !important;
           }
-          /* Setup page attributes to default to landscape and zero margin */
           @page {
             size: A4 landscape;
             margin: 0;
@@ -129,156 +121,226 @@ export function CertificateModal({ certificate, isOpen, onClose }: CertificateMo
         }
       `}} />
 
-      <div className="relative w-full max-w-5xl bg-slate-900 rounded-3xl overflow-hidden shadow-2xl flex flex-col my-8 max-h-[95vh]">
+      <div className="relative w-full max-w-5xl bg-slate-900 rounded-2xl overflow-hidden shadow-2xl flex flex-col my-6 max-h-[95vh]">
         {/* Modal Toolbar Header */}
-        <div className="flex items-center justify-between p-6 border-b border-slate-800 bg-slate-900 z-10">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-b border-slate-800 bg-slate-900 z-10">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-indigo-500/10 rounded-xl text-indigo-400">
+            <div className="p-2 bg-indigo-500/15 rounded-xl text-indigo-400">
               <Award className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-sm font-black text-white tracking-tight">
-                Academic Certificate Viewer
+              <h2 className="text-sm font-bold text-white tracking-tight">
+                A4 Landscape Certificate Viewer
               </h2>
-              <p className="text-[10px] font-mono text-indigo-400 font-bold uppercase tracking-widest">
-                VERIFIABLE CREDENTIAL LEDGER
+              <p className="text-[11px] font-mono text-indigo-400 font-semibold uppercase tracking-wider">
+                297mm × 210mm · Verified Record · {certificate.certificateCode}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
-              onClick={handlePrint}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-xs font-extrabold text-white rounded-xl shadow transition-all cursor-pointer"
+              type="button"
+              onClick={handleDownloadPdf}
+              disabled={downloadingPdf}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-xs font-bold text-white rounded-lg shadow transition-colors cursor-pointer"
             >
-              <Printer className="w-4 h-4" />
-              Print / Save PDF (A4 Landscape)
+              {downloadingPdf ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <FileDown className="w-3.5 h-3.5" />
+              )}
+              {downloadingPdf ? "Generating A4..." : "Download A4 PDF"}
             </button>
+
             <button
+              type="button"
+              onClick={handleDownloadPng}
+              disabled={downloadingPng}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-xs font-semibold text-slate-100 rounded-lg border border-slate-700 transition-colors cursor-pointer"
+            >
+              {downloadingPng ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <ImageIcon className="w-3.5 h-3.5" />
+              )}
+              Download PNG
+            </button>
+
+            <button
+              type="button"
+              onClick={handleCopyVerifyLink}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-100 rounded-lg border border-slate-700 transition-colors cursor-pointer"
+            >
+              {copiedLink ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  Copied Link
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5" />
+                  Verify Link
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={handlePrint}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-100 rounded-lg border border-slate-700 transition-colors cursor-pointer"
+              title="Print A4 Landscape"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              Print
+            </button>
+
+            <button
+              type="button"
               onClick={onClose}
-              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-all cursor-pointer"
+              className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+              aria-label="Close modal"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
+        {exportError && (
+          <div className="px-6 py-2.5 bg-rose-950/80 border-b border-rose-800 text-rose-200 text-xs font-medium">
+            {exportError}
+          </div>
+        )}
+
         {/* Modal Scrollable Workspace */}
-        <div className="p-6 md:p-8 overflow-y-auto bg-slate-950 flex justify-center items-center">
-          {/* Certificate Container with landscape A4 proportion ratio */}
-          <div 
-            id="print-area-wrapper" 
-            className="w-full max-w-4xl aspect-[1.414/1] bg-white text-slate-900 p-8 md:p-14 rounded-2xl relative shadow-lg flex flex-col justify-between overflow-hidden border border-slate-200"
+        <div className="p-4 sm:p-8 overflow-y-auto bg-slate-950 flex justify-center items-center">
+          {/* Certificate Container with exact A4 Landscape proportion ratio (297:210 = 1.4142) */}
+          <div
+            id="print-area-wrapper"
+            className="w-full max-w-4xl aspect-[297/210] bg-white text-slate-900 p-6 sm:p-10 md:p-12 rounded-xl relative shadow-xl flex flex-col justify-between overflow-hidden border border-slate-200"
           >
-            {/* Watermark Graphic & Guilloche styling */}
-            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(99,102,241,0.02),transparent_70%)] pointer-events-none" />
-            <div className="absolute top-0 left-0 w-32 h-32 border-t-4 border-l-4 border-slate-200 pointer-events-none" />
-            <div className="absolute top-0 right-0 w-32 h-32 border-t-4 border-r-4 border-slate-200 pointer-events-none" />
-            <div className="absolute bottom-0 left-0 w-32 h-32 border-b-4 border-l-4 border-slate-200 pointer-events-none" />
-            <div className="absolute bottom-0 right-0 w-32 h-32 border-b-4 border-r-4 border-slate-200 pointer-events-none" />
+            {/* Subtle watermark gradient */}
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(99,102,241,0.03),transparent_70%)] pointer-events-none" />
+            {/* Corner ornaments */}
+            <div className="absolute top-3 left-3 w-12 h-12 border-t-2 border-l-2 border-slate-300 pointer-events-none" />
+            <div className="absolute top-3 right-3 w-12 h-12 border-t-2 border-r-2 border-slate-300 pointer-events-none" />
+            <div className="absolute bottom-3 left-3 w-12 h-12 border-b-2 border-l-2 border-slate-300 pointer-events-none" />
+            <div className="absolute bottom-3 right-3 w-12 h-12 border-b-2 border-r-2 border-slate-300 pointer-events-none" />
 
             {/* Inner Double-Ornate Framing */}
-            <div className={`absolute inset-4 border-2 ${decor.borderColor} border-double pointer-events-none rounded-lg`} />
+            <div className={`absolute inset-4 border-2 ${theme.borderClass} border-double pointer-events-none rounded-lg`} />
             <div className="absolute inset-5 border border-slate-200 pointer-events-none rounded" />
 
-            <div className="relative z-10 flex flex-col justify-between h-full text-center py-4 px-6">
-              {/* Header: Insignia & Event Title */}
-              <div className="space-y-2">
+            <div className="relative z-10 flex flex-col justify-between h-full text-center py-2 px-4 sm:px-6">
+              {/* Header */}
+              <div className="space-y-1.5">
                 <div className="flex justify-center">
-                  <div className="relative">
-                    <div className="absolute -inset-1 bg-indigo-500/10 rounded-full blur-sm" />
-                    <div className="relative p-2.5 bg-slate-50 border border-slate-200 rounded-full text-slate-800">
-                      <Award className="w-7 h-7 stroke-[1.5]" />
-                    </div>
+                  <div className="p-2 bg-slate-50 border border-slate-200 rounded-full text-slate-800">
+                    <Award className="w-6 h-6 stroke-[1.5]" />
                   </div>
                 </div>
-                <div className="text-center">
-                  <p className="text-[10px] font-mono tracking-widest text-slate-400 font-extrabold uppercase">
-                    Autonomous AI Hackathon Committee
+                <div>
+                  <p className="text-[10px] font-mono tracking-widest text-slate-500 font-bold uppercase">
+                    HackEval Academic Evaluation Committee
                   </p>
-                  <h3 className="text-xs font-sans font-black text-slate-800 uppercase tracking-wider mt-0.5">
-                    Academic Certificate of Honor
+                  <h3 className="text-xs sm:text-sm font-sans font-extrabold text-slate-900 uppercase tracking-wider mt-0.5">
+                    Certificate of Achievement
                   </h3>
+                  {certificate.hackathonName && (
+                    <p className="text-[11px] font-semibold text-indigo-700 mt-0.5">
+                      {certificate.hackathonName}
+                    </p>
+                  )}
                 </div>
               </div>
 
-              {/* Title & Certification Core Statement */}
-              <div className="space-y-4">
-                <p className="text-[11px] font-mono tracking-widest text-slate-500 uppercase font-bold">
-                  This academic credential is proud to declare that
+              {/* Recipient & Citation */}
+              <div className="space-y-2.5">
+                <p className="text-[10px] font-mono tracking-widest text-slate-500 uppercase font-bold">
+                  This credential is proudly presented to
                 </p>
-                <div className="space-y-1">
-                  <h1 className="text-3xl md:text-4xl font-sans font-black tracking-tight text-slate-900 leading-none">
+                <div className="space-y-0.5">
+                  <h1 className="text-3xl sm:text-4xl md:text-5xl font-serif font-bold tracking-tight text-slate-950 leading-none">
                     {certificate.recipientName}
                   </h1>
-                  <p className="text-xs text-slate-400 font-mono">
-                    ({certificate.recipientEmail})
+                  <p className="text-[11px] text-slate-500 font-mono">
+                    {certificate.recipientEmail}
                   </p>
                 </div>
-                <p className="text-slate-600 text-xs md:text-sm leading-relaxed max-w-2xl mx-auto font-medium">
-                  is officially recognized for demonstrating exceptional software engineering practices, outstanding prototype execution, and high-fidelity project development, earning the distinguished role of
+                <p className="text-slate-600 text-xs sm:text-sm leading-relaxed max-w-2xl mx-auto font-medium">
+                  for demonstrating exceptional software engineering, architectural clarity, and prototype execution, earning the distinguished recognition of
                 </p>
                 <div>
-                  <span className={`inline-flex px-4 py-1.5 rounded-full border text-xs md:text-sm font-black tracking-wide uppercase ${decor.borderColor} bg-slate-50 text-slate-900 shadow-sm`}>
+                  <span className={`inline-flex px-4 py-1.5 rounded-lg border text-xs sm:text-sm font-extrabold tracking-wide uppercase ${theme.borderClass} bg-slate-50 text-slate-900`}>
                     {certificate.role}
                   </span>
                 </div>
               </div>
 
               {/* Project and Team metadata block */}
-              <div className="bg-slate-50/80 border border-slate-100 rounded-xl p-3 md:p-4 max-w-xl mx-auto w-full grid grid-cols-2 gap-4 text-left">
-                <div className="border-r border-slate-200/60 pr-4">
-                  <p className="text-[9px] font-mono text-slate-400 uppercase font-bold tracking-wider">PROJECT ENTRY</p>
-                  <p className="text-xs font-black text-slate-900 mt-0.5 truncate">{certificate.projectName}</p>
+              <div className="bg-slate-50/90 border border-slate-200/80 rounded-xl p-2.5 sm:p-3.5 max-w-xl mx-auto w-full grid grid-cols-2 gap-4 text-left">
+                <div className="border-r border-slate-200 pr-4">
+                  <p className="text-[9px] font-mono text-slate-500 uppercase font-bold tracking-wider">Project Submission</p>
+                  <p className="text-xs font-bold text-slate-900 mt-0.5 truncate">{certificate.projectName}</p>
                 </div>
-                <div className="pl-2">
-                  <p className="text-[9px] font-mono text-slate-400 uppercase font-bold tracking-wider">DEVELOPMENT TEAM</p>
-                  <p className="text-xs font-bold text-slate-700 mt-0.5 truncate">{certificate.teamName}</p>
+                <div className="pl-1">
+                  <p className="text-[9px] font-mono text-slate-500 uppercase font-bold tracking-wider">Development Team</p>
+                  <p className="text-xs font-bold text-slate-800 mt-0.5 truncate">{certificate.teamName}</p>
                 </div>
               </div>
 
-              {/* Footer: Date, Gold Foil Seal, Verification Code & Dynamic Signatures */}
-              <div className="grid grid-cols-3 items-center gap-2 pt-4">
-                {/* Issue Date Signature Column */}
-                <div className="text-center space-y-1.5">
-                  <div className="border-b border-slate-300 mx-auto w-4/5 pb-1">
-                    <p className="text-slate-700 font-bold text-xs font-sans tracking-wide">
+              {/* Footer: Date, Seal, Authority & QR Code */}
+              <div className="grid grid-cols-4 items-end gap-3 pt-2">
+                {/* Date */}
+                <div className="text-center space-y-1">
+                  <div className="border-b border-slate-300 mx-auto w-full pb-1">
+                    <p className="text-slate-800 font-bold text-[11px] font-sans">
                       {formattedDate}
                     </p>
                   </div>
-                  <p className="text-[9px] font-mono text-slate-400 uppercase font-bold">
-                    DATE OF ISSUANCE
+                  <p className="text-[8px] font-mono text-slate-500 uppercase font-bold">
+                    Date of Issuance
                   </p>
                 </div>
 
-                {/* Central Gold Foil Seal Column */}
-                <div className="flex justify-center">
+                {/* Central Foil Seal (static, crisp) */}
+                <div className="flex justify-center pb-1">
                   <div className="relative flex flex-col items-center">
-                    {/* Ribbon tails */}
-                    <div className="absolute -bottom-6 flex gap-4">
-                      <div className={`w-3.5 h-10 ${decor.ribbonColor} rotate-12 opacity-80 rounded-b`} />
-                      <div className={`w-3.5 h-10 ${decor.ribbonColor} -rotate-12 opacity-80 rounded-b`} />
+                    <div className="absolute -bottom-3.5 flex gap-3">
+                      <div className={`w-2.5 h-6 ${theme.ribbonClass} rotate-12 opacity-85 rounded-b`} />
+                      <div className={`w-2.5 h-6 ${theme.ribbonClass} -rotate-12 opacity-85 rounded-b`} />
                     </div>
-                    {/* Ornate seal base */}
-                    <div className={`w-14 h-14 rounded-full ${decor.sealBg} flex items-center justify-center text-white border-2 border-white shadow-md relative z-10 animate-pulse`}>
-                      <div className="absolute inset-1 border border-white/40 border-dashed rounded-full" />
-                      <span className="text-[8px] font-black tracking-tighter text-center leading-none px-1">
-                        {decor.sealText}
+                    <div className={`w-12 h-12 rounded-full bg-gradient-to-br ${theme.sealGradientClass} flex items-center justify-center text-white border-2 border-white shadow-sm relative z-10`}>
+                      <div className="absolute inset-1 border border-white/45 border-dashed rounded-full" />
+                      <span className="text-[7px] font-extrabold tracking-tight text-center leading-tight px-1">
+                        {theme.sealLabel}
                       </span>
                     </div>
                   </div>
                 </div>
 
-                {/* Secure Cryptographic Authentication Column */}
-                <div className="text-center space-y-1.5">
-                  <div className="border-b border-slate-300 mx-auto w-4/5 pb-1">
-                    <p className="text-[10px] font-mono font-bold text-indigo-600 flex items-center justify-center gap-0.5">
-                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-                      {certificate.certificateCode}
+                {/* Signature */}
+                <div className="text-center space-y-1">
+                  <div className="border-b border-slate-300 mx-auto w-full pb-1">
+                    <p className="text-slate-800 font-serif italic font-semibold text-sm leading-none">
+                      HackEval Board
                     </p>
                   </div>
-                  <p className="text-[9px] font-mono text-slate-400 uppercase font-bold">
-                    VERIFICATION CODE
+                  <p className="text-[8px] font-mono text-slate-500 uppercase font-bold">
+                    Evaluation Authority
+                  </p>
+                </div>
+
+                {/* Scannable Verification QR + Code */}
+                <div className="flex flex-col items-center justify-end space-y-1">
+                  {qrDataUrl && (
+                    <div className="p-1 bg-white border border-slate-200 rounded-md">
+                      <img src={qrDataUrl} alt={`Verify ${certificate.certificateCode}`} className="w-11 h-11 sm:w-12 sm:h-12" />
+                    </div>
+                  )}
+                  <p className="text-[9px] font-mono font-bold text-indigo-700 flex items-center gap-0.5">
+                    <ShieldCheck className="w-3 h-3 text-emerald-600 shrink-0" />
+                    {certificate.certificateCode}
                   </p>
                 </div>
               </div>
@@ -287,10 +349,10 @@ export function CertificateModal({ certificate, isOpen, onClose }: CertificateMo
         </div>
 
         {/* Modal Action Status Bar */}
-        <div className="p-5 border-t border-slate-800 bg-slate-900 flex justify-between items-center text-xs text-slate-400">
+        <div className="px-6 py-3.5 border-t border-slate-800 bg-slate-900 flex flex-wrap justify-between items-center gap-2 text-xs text-slate-400">
           <span className="flex items-center gap-1.5">
-            <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-            Verifiable Academic Record locked & synchronized securely in Cloud Firestore.
+            <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+            Landscape A4 (297mm × 210mm) credential with live QR verification.
           </span>
           <span className="font-mono text-[10px]">
             ID: {certificate.id}

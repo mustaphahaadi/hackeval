@@ -1,41 +1,38 @@
 import React, { useState, useEffect } from "react";
-import { 
-  Search, Award, ShieldCheck, Copy, Check, ExternalLink, 
-  Sparkles, Calendar, Mail, User, Folder, Users, AlertCircle, RefreshCw, Eye
+import {
+  Search, Award, ShieldCheck, Copy, Check, ExternalLink,
+  Folder, Users, AlertCircle, RefreshCw, Eye, FileDown, Loader2
 } from "lucide-react";
-import { motion } from "motion/react";
+import { Certificate } from "../types";
 import { CertificateModal } from "./CertificateModal.js";
+import { downloadCertificatePdf, getCertificateVerificationUrl } from "../utils/certificateGenerator.js";
 
 interface CredentialsLedgerProps {
   token?: string | null;
+  currentUser?: {
+    id?: string;
+    name?: string;
+    email?: string;
+    role?: string;
+  } | null;
 }
 
-export function CredentialsLedger({ token }: CredentialsLedgerProps) {
+export function CredentialsLedger({ token, currentUser }: CredentialsLedgerProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState("");
-  const [certificates, setCertificates] = useState<any[]>([]);
+  const [certificates, setCertificates] = useState<Certificate[]>([]);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  
-  // High fidelity certificate modal integration state
-  const [selectedCertificate, setSelectedCertificate] = useState<any | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  const [selectedCertificate, setSelectedCertificate] = useState<Certificate | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Automatically check URL parameters or localStorage or state if needed
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const codeParam = params.get("code") || params.get("cert");
-    if (codeParam) {
-      setSearchQuery(codeParam);
-      handleSearch(codeParam);
-    }
-  }, []);
-
   const handleSearch = async (queryToSearch?: string) => {
-    const q = (queryToSearch || searchQuery).trim();
+    const q = (queryToSearch ?? searchQuery).trim();
     if (!q) {
-      setError("Please enter an email address or a unique verification code to search.");
+      setError("Please enter an email address or a unique verification code (e.g. CERT-123456).");
       return;
     }
 
@@ -46,11 +43,10 @@ export function CredentialsLedger({ token }: CredentialsLedgerProps) {
 
     try {
       let url = "/api/certificates";
-      // Determine if it is a certificate code or email
-      if (q.toUpperCase().startsWith("CERT-") || q.length === 11) {
-        url += `?code=${encodeURIComponent(q)}`;
-      } else {
+      if (q.includes("@")) {
         url += `?email=${encodeURIComponent(q)}`;
+      } else {
+        url += `?code=${encodeURIComponent(q)}`;
       }
 
       const headers: Record<string, string> = {};
@@ -63,7 +59,7 @@ export function CredentialsLedger({ token }: CredentialsLedgerProps) {
         throw new Error("Failed to search credentials database.");
       }
       const data = await res.json();
-      setCertificates(data);
+      setCertificates(Array.isArray(data) ? data : []);
     } catch (err: any) {
       setError(err.message || "An error occurred while retrieving certificates.");
     } finally {
@@ -71,63 +67,76 @@ export function CredentialsLedger({ token }: CredentialsLedgerProps) {
     }
   };
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const codeParam = params.get("code") || params.get("cert");
+    if (codeParam) {
+      setSearchQuery(codeParam);
+      handleSearch(codeParam);
+      return;
+    }
+    if (currentUser?.email) {
+      setSearchQuery(currentUser.email);
+      handleSearch(currentUser.email);
+    }
+  }, [currentUser?.email]);
+
   const handleCopyLink = (code: string) => {
-    const shareUrl = `${window.location.origin}?tab=ledger&code=${code}`;
+    const shareUrl = getCertificateVerificationUrl(code);
     navigator.clipboard.writeText(shareUrl);
     setCopiedId(code);
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  // Helper to render beautiful visual awards based on role
+  const handleDirectDownloadPdf = async (cert: Certificate) => {
+    setError("");
+    setDownloadingId(cert.id);
+    try {
+      await downloadCertificatePdf(cert);
+    } catch (err: any) {
+      setError(err?.message || "Failed to generate A4 PDF certificate.");
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
   const getBadgeStyle = (role: string) => {
-    const r = role.toLowerCase();
-    if (r.includes("first")) {
+    const r = (role || "").toLowerCase();
+    if (r.includes("first") || r.includes("grand prize") || r.includes("winner")) {
       return {
         bg: "bg-amber-50 border-amber-200 text-amber-800",
-        badge: "👑 First Place",
-        iconColor: "text-amber-500",
-        gradient: "from-amber-500/10 via-yellow-500/5 to-transparent",
-        glow: "shadow-amber-100"
+        label: "Grand Distinction",
+        iconColor: "text-amber-600",
       };
-    } else if (r.includes("second")) {
+    } else if (r.includes("second") || r.includes("runner-up")) {
       return {
         bg: "bg-slate-100 border-slate-300 text-slate-800",
-        badge: "🥈 Second Place",
-        iconColor: "text-slate-400",
-        gradient: "from-slate-400/10 via-zinc-400/5 to-transparent",
-        glow: "shadow-slate-100"
+        label: "Silver Distinction",
+        iconColor: "text-slate-500",
       };
     } else if (r.includes("third")) {
       return {
-        bg: "bg-amber-100/60 border-amber-300/60 text-amber-900",
-        badge: "🥉 Third Place",
+        bg: "bg-amber-50 border-amber-300 text-amber-900",
+        label: "Bronze Distinction",
         iconColor: "text-amber-700",
-        gradient: "from-amber-700/10 via-amber-600/5 to-transparent",
-        glow: "shadow-amber-50"
       };
-    } else if (r.includes("best ai") || r.includes("integration")) {
+    } else if (r.includes("ai") || r.includes("technical") || r.includes("innovative") || r.includes("integration")) {
       return {
         bg: "bg-indigo-50 border-indigo-200 text-indigo-800",
-        badge: "✨ Best AI Integration",
-        iconColor: "text-indigo-500",
-        gradient: "from-indigo-500/10 via-purple-500/5 to-transparent",
-        glow: "shadow-indigo-100"
+        label: "Technical Excellence",
+        iconColor: "text-indigo-600",
       };
-    } else if (r.includes("finalist") || r.includes("outstanding")) {
+    } else if (r.includes("finalist") || r.includes("honorable") || r.includes("outstanding")) {
       return {
-        bg: "bg-cyan-50 border-cyan-200 text-cyan-800",
-        badge: "⭐ Outstanding Finalist",
-        iconColor: "text-cyan-500",
-        gradient: "from-cyan-500/10 via-sky-500/5 to-transparent",
-        glow: "shadow-cyan-50"
+        bg: "bg-sky-50 border-sky-200 text-sky-800",
+        label: "Finalist Merit",
+        iconColor: "text-sky-600",
       };
     } else {
       return {
         bg: "bg-slate-50 border-slate-200 text-slate-700",
-        badge: "🎓 Completion Award",
-        iconColor: "text-slate-500",
-        gradient: "from-slate-500/10 via-slate-400/5 to-transparent",
-        glow: "shadow-slate-50"
+        label: "Official Award",
+        iconColor: "text-slate-600",
       };
     }
   };
@@ -135,41 +144,39 @@ export function CredentialsLedger({ token }: CredentialsLedgerProps) {
   return (
     <div id="credentials_ledger_root" className="space-y-8 max-w-4xl mx-auto">
       {/* Search Header Banner */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-8 md:p-12 text-white shadow-xl relative overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(99,102,241,0.15),transparent_40%)]" />
-        <div className="absolute -bottom-16 -left-16 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl" />
-        
-        <div className="relative space-y-6 max-w-2xl">
-          <div className="inline-flex items-center gap-2 bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-3.5 py-1.5 rounded-full text-xs font-bold tracking-wide">
-            <ShieldCheck className="w-4 h-4" /> Academic Credential Engine
+      <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 rounded-2xl p-8 md:p-10 text-white shadow-lg relative overflow-hidden">
+        <div className="relative space-y-5 max-w-2xl">
+          <div className="inline-flex items-center gap-2 text-indigo-300 text-xs font-mono font-bold uppercase tracking-wider">
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            Academic Credential Verification Engine
           </div>
-          
-          <h1 className="text-3xl md:text-4xl font-sans font-black tracking-tight leading-none text-white">
+
+          <h1 className="text-2xl sm:text-3xl font-sans font-bold tracking-tight leading-tight text-white">
             Verifiable Credentials Ledger
           </h1>
-          <p className="text-slate-300 text-sm md:text-base leading-relaxed">
-            Verify the authenticity of digital achievement awards issued by the hackathon evaluation committee. Search by participant email address or unique certificate verification code.
+          <p className="text-slate-300 text-sm leading-relaxed">
+            Verify achievement awards issued by the evaluation committee or download your official Landscape A4 (297mm × 210mm) PDF certificate with embedded QR verification.
           </p>
 
           {/* Integrated Search Input Form */}
-          <div className="pt-2">
+          <div className="pt-1">
             <form onSubmit={(e) => { e.preventDefault(); handleSearch(); }} className="relative flex items-center">
               <div className="absolute left-4 text-slate-400 pointer-events-none">
-                <Search className="w-5 h-5" />
+                <Search className="w-4 h-4" />
               </div>
               <input
                 id="ledger_search_input"
                 type="text"
-                placeholder="Enter email address (e.g., student@school.edu) or code (e.g., CERT-123456)..."
+                placeholder="Enter recipient email or verification code (e.g. CERT-123456)..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-12 pr-32 py-4 bg-white/10 backdrop-blur-md text-white border border-white/10 rounded-2xl placeholder-slate-400 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 transition-all font-medium"
+                className="w-full pl-11 pr-32 py-3.5 bg-white/10 text-white border border-white/15 rounded-xl placeholder-slate-400 text-sm focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/30 transition-all font-medium"
               />
               <button
                 id="ledger_search_button"
                 type="submit"
                 disabled={loading}
-                className="absolute right-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-800 text-white font-bold rounded-xl text-xs transition-all cursor-pointer flex items-center gap-1.5"
+                className="absolute right-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-800 text-white font-semibold rounded-lg text-xs transition-colors cursor-pointer flex items-center gap-1.5"
               >
                 {loading ? (
                   <>
@@ -182,8 +189,8 @@ export function CredentialsLedger({ token }: CredentialsLedgerProps) {
               </button>
             </form>
             {error && (
-              <p className="text-rose-400 text-xs mt-3 flex items-center gap-1 font-semibold">
-                <AlertCircle className="w-3.5 h-3.5" />
+              <p className="text-rose-300 text-xs mt-3 flex items-center gap-1.5 font-medium">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                 {error}
               </p>
             )}
@@ -194,152 +201,150 @@ export function CredentialsLedger({ token }: CredentialsLedgerProps) {
       {/* Query Results Display */}
       <div id="ledger_results_panel" className="space-y-6">
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 space-y-4">
-            <RefreshCw className="w-8 h-8 text-indigo-600 animate-spin" />
-            <p className="text-slate-500 text-xs font-mono">Quering secure distributed database ledger...</p>
+          <div className="flex flex-col items-center justify-center py-16 space-y-3">
+            <RefreshCw className="w-7 h-7 text-indigo-600 animate-spin" />
+            <p className="text-slate-500 text-xs font-mono">Querying verified credentials registry...</p>
           </div>
         ) : searched ? (
           certificates.length === 0 ? (
-            <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center max-w-xl mx-auto space-y-3">
-              <Award className="w-12 h-12 text-slate-300 mx-auto stroke-[1.5]" />
-              <h3 className="text-base font-bold text-slate-800">No Verifiable Credentials Found</h3>
+            <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center max-w-xl mx-auto space-y-3">
+              <Award className="w-11 h-11 text-slate-300 mx-auto stroke-[1.5]" />
+              <h3 className="text-base font-bold text-slate-900">No Matching Credentials Found</h3>
               <p className="text-slate-500 text-xs leading-relaxed">
-                We could not locate any active credentials matching <span className="font-mono bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-bold">"{searchQuery}"</span>. Please confirm the spelling or double check the verification code.
+                We could not locate any active credentials matching{" "}
+                <span className="font-mono bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-bold">
+                  "{searchQuery}"
+                </span>. Confirm the recipient email or double check the <span className="font-mono">CERT-XXXXXX</span> code.
               </p>
             </div>
           ) : (
-            <div className="space-y-8">
+            <div className="space-y-6">
               <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-                <h2 className="text-sm font-bold text-slate-500 tracking-wider uppercase font-mono">
-                  Matching Verified Records ({certificates.length})
+                <h2 className="text-xs font-bold text-slate-500 tracking-wider uppercase font-mono">
+                  Verified Credentials ({certificates.length})
                 </h2>
-                <span className="inline-flex items-center gap-1 text-[10px] text-emerald-600 font-bold bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
-                  <ShieldCheck className="w-3.5 h-3.5" /> Cryptographically Validated
+                <span className="inline-flex items-center gap-1.5 text-xs text-emerald-700 font-semibold">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" /> Registry Verified
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 gap-8">
+              <div className="grid grid-cols-1 gap-6">
                 {certificates.map((cert) => {
                   const style = getBadgeStyle(cert.role);
                   return (
-                    <motion.div
+                    <div
                       key={cert.id}
-                      initial={{ opacity: 0, y: 15 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className={`bg-white border border-slate-200/80 rounded-3xl overflow-hidden shadow-lg hover:shadow-xl transition-all relative ${style.glow}`}
+                      className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow"
                     >
-                      {/* Decorative Ribbon/Background */}
-                      <div className={`absolute top-0 right-0 w-48 h-48 bg-gradient-to-bl ${style.gradient} rounded-bl-full pointer-events-none -z-0 opacity-80`} />
-                      
-                      {/* Dynamic Award Sticker */}
-                      <div className="absolute top-6 right-6 z-10 hidden sm:block">
-                        <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border font-black text-xs uppercase tracking-wider ${style.bg}`}>
-                          {style.badge}
-                        </span>
-                      </div>
-
-                      <div className="p-6 sm:p-10 relative z-10 flex flex-col justify-between h-full space-y-8">
+                      <div className="p-6 sm:p-8 space-y-6">
                         {/* Credential Header */}
-                        <div className="flex items-start gap-4">
-                          <div className={`p-3 bg-slate-50 border border-slate-100 rounded-2xl ${style.iconColor}`}>
-                            <Award className="w-8 h-8 stroke-[1.75]" />
+                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                          <div className="flex items-start gap-3.5">
+                            <div className={`p-2.5 bg-slate-50 border border-slate-200 rounded-xl ${style.iconColor}`}>
+                              <Award className="w-6 h-6 stroke-[1.75]" />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2 text-[11px] font-mono text-slate-500">
+                                <span className="uppercase font-bold tracking-wider">Verifiable Credential</span>
+                                <span>·</span>
+                                <span className="text-emerald-700 font-bold flex items-center gap-1">
+                                  <ShieldCheck className="w-3.5 h-3.5" /> Active
+                                </span>
+                              </div>
+                              <h3 className="text-lg font-sans font-bold text-slate-900 mt-0.5">
+                                {cert.hackathonName || "HackEval Academic Hackathon"}
+                              </h3>
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                Issued on {new Date(cert.issuedAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
+                              </p>
+                            </div>
+                          </div>
+
+                          <span className={`self-start inline-flex items-center px-3 py-1 rounded-md border font-bold text-xs uppercase tracking-wide ${style.bg}`}>
+                            {cert.role}
+                          </span>
+                        </div>
+
+                        {/* Recipient & Project Details */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-50 border border-slate-200/80 rounded-xl p-4">
+                          <div>
+                            <p className="text-[10px] font-mono text-slate-500 uppercase font-bold">Recipient</p>
+                            <p className="text-sm font-bold text-slate-900 mt-0.5">{cert.recipientName}</p>
+                            <p className="text-xs text-slate-500 font-mono truncate">{cert.recipientEmail}</p>
                           </div>
                           <div>
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="text-[10px] font-mono uppercase tracking-widest text-slate-400 font-bold">Verifiable Credential</span>
-                              <span className="text-slate-300">•</span>
-                              <span className="text-[10px] font-mono text-emerald-600 font-extrabold flex items-center gap-0.5">
-                                <ShieldCheck className="w-3 h-3" /> Secure Record
-                              </span>
-                            </div>
-                            <h3 className="text-lg font-sans font-black text-slate-900 mt-1">
-                              Certificate of Achievement
-                            </h3>
-                            <p className="text-xs text-slate-500 mt-0.5">
-                              Issued on {new Date(cert.issuedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })}
+                            <p className="text-[10px] font-mono text-slate-500 uppercase font-bold flex items-center gap-1">
+                              <Folder className="w-3 h-3 text-indigo-500" /> Project
                             </p>
+                            <p className="text-sm font-bold text-slate-900 mt-0.5">{cert.projectName}</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-mono text-slate-500 uppercase font-bold flex items-center gap-1">
+                              <Users className="w-3 h-3 text-emerald-600" /> Team
+                            </p>
+                            <p className="text-sm font-semibold text-slate-800 mt-0.5">{cert.teamName}</p>
                           </div>
                         </div>
 
-                        {/* Certificate Body text */}
-                        <div className="border-y border-slate-100 py-6 my-2 space-y-4">
-                          <p className="text-slate-500 text-xs font-medium uppercase tracking-wider text-center">
-                            This officially certifies that
-                          </p>
-                          <div className="text-center space-y-1">
-                            <h4 className="text-2xl font-sans font-extrabold text-slate-900 tracking-tight">
-                              {cert.recipientName}
-                            </h4>
-                            <p className="text-slate-400 text-xs font-mono">
-                              ({cert.recipientEmail})
-                            </p>
-                          </div>
-                          
-                          <p className="text-slate-600 text-sm leading-relaxed text-center max-w-xl mx-auto pt-1">
-                            has demonstrated exceptional academic innovation and software development skills, earning the honor of <span className="font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded">{cert.role}</span> for the project submission:
-                          </p>
-
-                          <div className="bg-slate-50 border border-slate-100 p-5 rounded-2xl space-y-3 max-w-lg mx-auto">
-                            <div className="flex items-start gap-3">
-                              <Folder className="w-4.5 h-4.5 text-indigo-500 mt-0.5 shrink-0" />
-                              <div>
-                                <p className="text-[10px] font-mono text-slate-400 uppercase font-bold">Project Submission</p>
-                                <p className="text-slate-900 font-extrabold text-sm">{cert.projectName}</p>
-                              </div>
-                            </div>
-                            <div className="flex items-start gap-3 border-t border-slate-200/50 pt-2">
-                              <Users className="w-4.5 h-4.5 text-emerald-500 mt-0.5 shrink-0" />
-                              <div>
-                                <p className="text-[10px] font-mono text-slate-400 uppercase font-bold">Team Name</p>
-                                <p className="text-slate-700 font-bold text-xs">{cert.teamName}</p>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Metadata & Actions Footer */}
-                        <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 bg-slate-50/80 p-4 rounded-2xl border border-slate-100">
-                          <div className="space-y-1">
-                            <p className="text-[9px] font-mono text-slate-400 uppercase tracking-widest font-bold">Verification ID Code</p>
-                            <p className="text-xs font-mono font-black text-slate-700 bg-white border border-slate-200 px-2.5 py-1 rounded-lg inline-block">
-                              {cert.certificateCode}
-                            </p>
-                          </div>
-
+                        {/* Footer Actions */}
+                        <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 pt-2 border-t border-slate-100">
                           <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-mono text-slate-500 uppercase font-bold">Code:</span>
+                            <span className="text-xs font-mono font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-md">
+                              {cert.certificateCode}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleDirectDownloadPdf(cert)}
+                              disabled={downloadingId === cert.id}
+                              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-xs font-bold text-white rounded-lg shadow-sm transition-colors cursor-pointer"
+                            >
+                              {downloadingId === cert.id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <FileDown className="w-3.5 h-3.5" />
+                              )}
+                              {downloadingId === cert.id ? "Building A4..." : "Download A4 PDF"}
+                            </button>
+
                             <button
                               type="button"
                               onClick={() => {
                                 setSelectedCertificate(cert);
                                 setIsModalOpen(true);
                               }}
-                              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-xs font-extrabold text-indigo-700 rounded-xl shadow-sm transition-all cursor-pointer"
+                              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-slate-700 rounded-lg shadow-sm transition-colors cursor-pointer"
                             >
                               <Eye className="w-3.5 h-3.5" />
-                              View & Print
+                              Preview & QR
                             </button>
+
                             <button
                               type="button"
                               onClick={() => handleCopyLink(cert.certificateCode)}
-                              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-white border border-slate-200 hover:border-slate-300 rounded-xl text-xs font-extrabold text-slate-700 hover:text-slate-900 shadow-sm transition-all cursor-pointer"
+                              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg text-xs font-semibold text-slate-700 shadow-sm transition-colors cursor-pointer"
                             >
                               {copiedId === cert.certificateCode ? (
                                 <>
-                                  <Check className="w-3.5 h-3.5 text-emerald-500" />
-                                  Link Copied!
+                                  <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                  Copied!
                                 </>
                               ) : (
                                 <>
                                   <Copy className="w-3.5 h-3.5" />
-                                  Copy Share Link
+                                  Share Link
                                 </>
                               )}
                             </button>
+
                             <a
-                              href={`/api/certificates?code=${cert.certificateCode}`}
+                              href={`/api/certificates/verify/${encodeURIComponent(cert.certificateCode)}`}
                               target="_blank"
                               rel="noreferrer"
-                              className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 rounded-xl text-xs font-extrabold text-slate-700 shadow-sm transition-all cursor-pointer"
+                              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-semibold text-slate-700 transition-colors cursor-pointer"
                             >
                               <ExternalLink className="w-3.5 h-3.5" />
                               JSON Verify
@@ -347,7 +352,7 @@ export function CredentialsLedger({ token }: CredentialsLedgerProps) {
                           </div>
                         </div>
                       </div>
-                    </motion.div>
+                    </div>
                   );
                 })}
               </div>
@@ -355,35 +360,32 @@ export function CredentialsLedger({ token }: CredentialsLedgerProps) {
           )
         ) : (
           /* Default State prior to Search */
-          <div className="bg-white border border-slate-200 rounded-3xl p-10 md:p-16 text-center space-y-6">
-            <div className="w-16 h-16 bg-indigo-50 border border-indigo-100 rounded-2xl flex items-center justify-center mx-auto text-indigo-600">
-              <Award className="w-8 h-8 stroke-[1.75]" />
+          <div className="bg-white border border-slate-200 rounded-2xl p-10 text-center space-y-6">
+            <div className="w-14 h-14 bg-indigo-50 border border-indigo-100 rounded-xl flex items-center justify-center mx-auto text-indigo-600">
+              <Award className="w-7 h-7 stroke-[1.75]" />
             </div>
-            
+
             <div className="space-y-2 max-w-md mx-auto">
-              <h3 className="text-lg font-sans font-black text-slate-900">
-                Lookup Your Digital Certificate
+              <h3 className="text-lg font-sans font-bold text-slate-900">
+                Lookup or Verify a Certificate
               </h3>
               <p className="text-slate-500 text-xs leading-relaxed">
-                Academic certificates issued for top performing teams and successful completions can be searched above. Once found, they can be verifiably cited on resumes and LinkedIn.
+                Search by recipient email address or <span className="font-mono">CERT-XXXXXX</span> code above to inspect verified records and download Landscape A4 PDF certificates.
               </p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl mx-auto pt-4 text-left font-sans">
-              <div className="border border-slate-100 p-4 rounded-2xl bg-slate-50/50 space-y-1">
-                <span className="text-lg">🛡️</span>
-                <h4 className="font-extrabold text-slate-900 text-xs">Tamper Proof</h4>
-                <p className="text-slate-400 text-[10px] leading-relaxed">Every record has a unique ledger verification ID that points back to database records.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl mx-auto pt-2 text-left font-sans">
+              <div className="border border-slate-200 p-4 rounded-xl bg-slate-50/60 space-y-1">
+                <h4 className="font-bold text-slate-900 text-xs">Landscape A4 Export</h4>
+                <p className="text-slate-500 text-xs leading-relaxed">Download print-ready 297mm × 210mm PDF and high-resolution PNG certificates directly.</p>
               </div>
-              <div className="border border-slate-100 p-4 rounded-2xl bg-slate-50/50 space-y-1">
-                <span className="text-lg">✨</span>
-                <h4 className="font-extrabold text-slate-900 text-xs">Verifiably Public</h4>
-                <p className="text-slate-400 text-[10px] leading-relaxed">Anyone can use the verification code or JSON Verify link to check a credential's active status.</p>
+              <div className="border border-slate-200 p-4 rounded-xl bg-slate-50/60 space-y-1">
+                <h4 className="font-bold text-slate-900 text-xs">Scannable QR Proof</h4>
+                <p className="text-slate-500 text-xs leading-relaxed">Each certificate embeds a live QR code pointing to its verification record in this ledger.</p>
               </div>
-              <div className="border border-slate-100 p-4 rounded-2xl bg-slate-50/50 space-y-1">
-                <span className="text-lg">👑</span>
-                <h4 className="font-extrabold text-slate-900 text-xs">Achievement Roles</h4>
-                <p className="text-slate-400 text-[10px] leading-relaxed">Special gold, silver, bronze, and AI laurels correspond directly to finalized jury ranks.</p>
+              <div className="border border-slate-200 p-4 rounded-xl bg-slate-50/60 space-y-1">
+                <h4 className="font-bold text-slate-900 text-xs">Public Verification API</h4>
+                <p className="text-slate-500 text-xs leading-relaxed">Verify any credential programmatically via shareable verification URL or JSON endpoint.</p>
               </div>
             </div>
           </div>
