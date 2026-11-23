@@ -277,10 +277,12 @@ class LocalDB {
       }));
       this.isInitialized = true;
       this.lastRefreshTime = Date.now();
-      console.log("Firestore initialization and self-healing completed.");
+      await this.syncMissingRankingsAndCertificates();
+      console.log("Firestore initialization and deterministic ranking sync completed.");
     } catch (error) {
       console.error("Failed to initialize Firebase database, falling back to local file DB:", error);
       this.isInitialized = true;
+      await this.syncMissingRankingsAndCertificates();
     }
   }
 
@@ -624,13 +626,35 @@ class LocalDB {
   getUsers() { return this.state.users; }
   getTeams() { return this.state.teams; }
   getParticipants() { return this.state.participants; }
-  getHackathons() { return this.state.hackathons; }
-  getProjects() { return this.state.projects; }
+  getHackathons() {
+    return [...this.state.hackathons].sort((a, b) => {
+      if (a.active !== b.active) return a.active ? -1 : 1;
+      return b.startDate.localeCompare(a.startDate) || a.id.localeCompare(b.id);
+    });
+  }
+  getProjects() {
+    const hkMap = new Map(this.state.hackathons.map(h => [h.id, h.name]));
+    return [...this.state.projects]
+      .map(p => ({
+        ...p,
+        hackathonName: p.hackathonName || hkMap.get(p.hackathonId) || ""
+      }))
+      .sort((a, b) => {
+        const ra = typeof a.officialRank === "number" ? a.officialRank : Number.MAX_SAFE_INTEGER;
+        const rb = typeof b.officialRank === "number" ? b.officialRank : Number.MAX_SAFE_INTEGER;
+        if (ra !== rb) return ra - rb;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() || a.id.localeCompare(b.id);
+      });
+  }
   getGitHubAnalyses() { return this.state.githubAnalyses; }
   getAIEvaluations() { return this.state.aiEvaluations; }
   getJudgeReviews() { return this.state.judgeReviews; }
   getComments() { return this.state.comments; }
-  getCertificates() { return this.state.certificates; }
+  getCertificates() {
+    return [...this.state.certificates]
+      .map(c => this.enrichCertificateSnapshot(c))
+      .sort((a, b) => new Date(b.issuedAt).getTime() - new Date(a.issuedAt).getTime() || a.id.localeCompare(b.id));
+  }
   getLiveAnalyses() { return this.state.liveAnalyses || []; }
 
   async saveLiveAnalysis(analysis: LiveAnalysisResult): Promise<LiveAnalysisResult> {
@@ -734,12 +758,17 @@ class LocalDB {
       ...proj,
       id: "proj_" + Math.random().toString(36).substr(2, 9),
       createdAt: new Date().toISOString(),
-      status: "pending"
+      status: "pending",
+      officialRank: null,
+      combinedScore: null,
+      aiOverallScore: null,
+      judgeAverageScore: null
     };
     this.state.projects.push(newProj);
     this.save();
     await this.persistItem("projects", newProj.id, newProj);
-    return newProj;
+    await this.syncHackathonRankings(newProj.hackathonId);
+    return this.state.projects.find(p => p.id === newProj.id) || newProj;
   }
 
   async updateProject(id: string, updates: Partial<ProjectSubmission>): Promise<ProjectSubmission | null> {
@@ -788,13 +817,17 @@ class LocalDB {
 
     // Also mark project as evaluated
     const projIndex = this.state.projects.findIndex(p => p.id === evalu.projectId);
+    let targetHackathonId: string | undefined;
     if (projIndex !== -1) {
       this.state.projects[projIndex].status = "evaluated";
+      targetHackathonId = this.state.projects[projIndex].hackathonId;
     }
 
     this.save();
     await this.persistItem("aiEvaluations", item.id, item);
-    if (projIndex !== -1) {
+    if (targetHackathonId) {
+      await this.syncHackathonRankings(targetHackathonId);
+    } else if (projIndex !== -1) {
       await this.persistItem("projects", this.state.projects[projIndex].id, this.state.projects[projIndex]);
     }
     return item;
@@ -818,6 +851,10 @@ class LocalDB {
     }
     this.save();
     await this.persistItem("judgeReviews", newReview.id, newReview);
+    const proj = this.state.projects.find(p => p.id === review.projectId);
+    if (proj) {
+      await this.syncHackathonRankings(proj.hackathonId);
+    }
     return newReview;
   }
 
@@ -835,18 +872,28 @@ class LocalDB {
   }
 
   // CERTIFICATES
-  async issueCertificate(cert: Omit<Certificate, "id" | "issuedAt" | "certificateCode">): Promise<Certificate> {
+  async issueCertificate(
+    cert: Omit<Certificate, "id" | "issuedAt" | "certificateCode"> & { issuedAt?: string }
+  ): Promise<Certificate> {
     let certificateCode = "";
     do {
       certificateCode = "CERT-" + Math.floor(100000 + Math.random() * 900000);
     } while (this.state.certificates.some(c => c.certificateCode === certificateCode));
 
-    const newCert: Certificate = {
+    let resolvedIssuedAt = new Date().toISOString();
+    if (cert.issuedAt) {
+      const parsed = new Date(cert.issuedAt);
+      if (!Number.isNaN(parsed.getTime())) {
+        resolvedIssuedAt = parsed.toISOString();
+      }
+    }
+
+    const newCert: Certificate = this.enrichCertificateSnapshot({
       ...cert,
       id: "cert_" + Math.random().toString(36).substr(2, 9),
-      issuedAt: new Date().toISOString(),
+      issuedAt: resolvedIssuedAt,
       certificateCode
-    };
+    });
     this.state.certificates.push(newCert);
     this.save();
     await this.persistItem("certificates", newCert.id, newCert);
@@ -903,6 +950,8 @@ class LocalDB {
   }
 
   async deleteProject(id: string): Promise<boolean> {
+    const targetProject = this.state.projects.find(p => p.id === id);
+    const targetHackathonId = targetProject?.hackathonId;
     const initialLength = this.state.projects.length;
     this.state.projects = this.state.projects.filter(p => p.id !== id);
     if (this.state.projects.length === initialLength) return false;
@@ -941,6 +990,9 @@ class LocalDB {
     for (const c of certificatesToDelete) {
       await this.deleteItem("certificates", c.id);
     }
+    if (targetHackathonId) {
+      await this.syncHackathonRankings(targetHackathonId);
+    }
     return true;
   }
 
@@ -953,51 +1005,229 @@ class LocalDB {
     return true;
   }
 
-  // LEADERBOARD CALCULATOR
+  private computeProjectScores(proj: ProjectSubmission) {
+    const aiEval = this.state.aiEvaluations.find(e => e.projectId === proj.id);
+    const aiScore = aiEval ? Number(aiEval.overallScore) : null;
+
+    const reviews = this.state.judgeReviews.filter(r => r.projectId === proj.id);
+    let judgeAvg: number | null = null;
+    if (reviews.length > 0) {
+      const sum = reviews.reduce((acc, r) => acc + Number(r.overallScore), 0);
+      judgeAvg = Number((sum / reviews.length).toFixed(1));
+    }
+
+    let combined = 0;
+    if (aiScore !== null && judgeAvg !== null) {
+      combined = Number((aiScore * 0.4 + judgeAvg * 0.6).toFixed(1));
+    } else if (aiScore !== null) {
+      combined = aiScore;
+    } else if (judgeAvg !== null) {
+      combined = judgeAvg;
+    }
+
+    return { aiScore, judgeAvg, combined };
+  }
+
+  private sortLeaderboardDeterministically<T extends {
+    projectId: string;
+    combinedScore: number;
+    aiOverallScore: number | null;
+    judgeAverageScore: number | null;
+    createdAt?: string;
+  }>(rows: T[]): T[] {
+    return [...rows].sort((a, b) => {
+      const aScored = a.aiOverallScore !== null || a.judgeAverageScore !== null ? 1 : 0;
+      const bScored = b.aiOverallScore !== null || b.judgeAverageScore !== null ? 1 : 0;
+      if (bScored !== aScored) return bScored - aScored;
+      if (b.combinedScore !== a.combinedScore) return b.combinedScore - a.combinedScore;
+      const jA = a.judgeAverageScore ?? -1;
+      const jB = b.judgeAverageScore ?? -1;
+      if (jB !== jA) return jB - jA;
+      const aiA = a.aiOverallScore ?? -1;
+      const aiB = b.aiOverallScore ?? -1;
+      if (aiB !== aiA) return aiB - aiA;
+      const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      if (tA !== tB) return tA - tB;
+      return a.projectId.localeCompare(b.projectId);
+    });
+  }
+
+  private enrichCertificateSnapshot(cert: Certificate): Certificate {
+    const proj = this.state.projects.find(p => p.id === cert.projectId);
+    const hkId = cert.hackathonId || proj?.hackathonId;
+    const hk = hkId ? this.state.hackathons.find(h => h.id === hkId) : undefined;
+    const hackathonProjectsCount = hkId
+      ? this.state.projects.filter(p => p.hackathonId === hkId).length
+      : null;
+
+    let rank = cert.projectRank ?? proj?.officialRank ?? null;
+    let combined = cert.combinedScore ?? proj?.combinedScore ?? null;
+
+    if ((rank === null || combined === null) && proj) {
+      const lb = this.getLeaderboard(proj.hackathonId);
+      const entry = lb.find(l => l.projectId === proj.id);
+      if (entry) {
+        if (rank === null) rank = entry.rank;
+        if (combined === null && (entry.aiOverallScore !== null || entry.judgeAverageScore !== null)) {
+          combined = entry.combinedScore;
+        }
+      }
+    }
+
+    return {
+      ...cert,
+      projectName: proj?.projectName || cert.projectName,
+      teamName: proj?.teamName || cert.teamName,
+      hackathonId: hkId,
+      hackathonName: cert.hackathonName || hk?.name || "HackEval Academic Hackathon",
+      projectRank: rank,
+      combinedScore: combined,
+      totalHackathonEntries: cert.totalHackathonEntries ?? hackathonProjectsCount
+    };
+  }
+
+  // Persists deterministic rankings onto ProjectSubmission records so ranks NEVER drift across refreshes
+  async syncHackathonRankings(hackathonId?: string): Promise<LeaderboardRanking[]> {
+    const hackathonIds = hackathonId
+      ? [hackathonId]
+      : Array.from(new Set(this.state.projects.map(p => p.hackathonId).filter(Boolean)));
+
+    const updatedProjectsToPersist: ProjectSubmission[] = [];
+
+    for (const hkId of hackathonIds) {
+      const hkProjects = this.state.projects.filter(p => p.hackathonId === hkId);
+      const computed = hkProjects.map(proj => {
+        const { aiScore, judgeAvg, combined } = this.computeProjectScores(proj);
+        return {
+          proj,
+          projectId: proj.id,
+          aiOverallScore: aiScore,
+          judgeAverageScore: judgeAvg,
+          combinedScore: combined,
+          createdAt: proj.createdAt
+        };
+      });
+
+      const sorted = this.sortLeaderboardDeterministically(computed);
+      const nowIso = new Date().toISOString();
+
+      sorted.forEach((item, idx) => {
+        const lockedRank = idx + 1;
+        const proj = item.proj;
+        const nextStatus: "pending" | "evaluated" =
+          item.aiOverallScore !== null ? "evaluated" : proj.status;
+
+        const changed =
+          proj.officialRank !== lockedRank ||
+          proj.combinedScore !== item.combinedScore ||
+          proj.aiOverallScore !== item.aiOverallScore ||
+          proj.judgeAverageScore !== item.judgeAverageScore ||
+          proj.status !== nextStatus;
+
+        if (changed) {
+          proj.officialRank = lockedRank;
+          proj.combinedScore = item.combinedScore;
+          proj.aiOverallScore = item.aiOverallScore;
+          proj.judgeAverageScore = item.judgeAverageScore;
+          proj.status = nextStatus;
+          proj.rankUpdatedAt = nowIso;
+          updatedProjectsToPersist.push(proj);
+        }
+      });
+    }
+
+    if (updatedProjectsToPersist.length > 0) {
+      this.save();
+      for (const proj of updatedProjectsToPersist) {
+        await this.persistItem("projects", proj.id, proj);
+      }
+    }
+
+    return this.getLeaderboard(hackathonId);
+  }
+
+  private async syncMissingRankingsAndCertificates() {
+    // Only populate missing officialRank / score fields or missing cert snapshots without mutating existing values
+    const needsSyncHackathons = new Set<string>();
+    for (const p of this.state.projects) {
+      const aiEval = this.state.aiEvaluations.find(e => e.projectId === p.id);
+      if (
+        typeof p.officialRank !== "number" ||
+        (aiEval && p.status !== "evaluated")
+      ) {
+        needsSyncHackathons.add(p.hackathonId);
+      }
+    }
+    for (const hkId of needsSyncHackathons) {
+      await this.syncHackathonRankings(hkId);
+    }
+
+    // Backfill legacy certificates that lacked hackathonId/hackathonName/projectRank/combinedScore
+    let certsUpdated = false;
+    for (let i = 0; i < this.state.certificates.length; i++) {
+      const c = this.state.certificates[i];
+      if (!c.hackathonName || !c.hackathonId || c.projectRank === undefined || c.combinedScore === undefined) {
+        const enriched = this.enrichCertificateSnapshot(c);
+        this.state.certificates[i] = enriched;
+        certsUpdated = true;
+        await this.persistItem("certificates", enriched.id, enriched);
+      }
+    }
+    if (certsUpdated) {
+      this.save();
+    }
+  }
+
+  // LEADERBOARD CALCULATOR (Reads persisted deterministic rankings; never randomly changes on refresh)
   getLeaderboard(hackathonId?: string): LeaderboardRanking[] {
     let filteredProjects = this.state.projects;
     if (hackathonId) {
       filteredProjects = filteredProjects.filter(proj => proj.hackathonId === hackathonId);
     }
 
-    return filteredProjects.map(proj => {
-      // Find AI evaluation
-      const aiEval = this.state.aiEvaluations.find(e => e.projectId === proj.id);
-      const aiScore = aiEval ? aiEval.overallScore : null;
-      
-      // Find Organizer/Judge reviews
-      const reviews = this.state.judgeReviews.filter(r => r.projectId === proj.id);
-      let judgeAvg: number | null = null;
-      if (reviews.length > 0) {
-        const sum = reviews.reduce((acc, r) => acc + r.overallScore, 0);
-        judgeAvg = Number((sum / reviews.length).toFixed(1));
-      }
-
-      // Calculate combined score (40% AI, 60% Organizer if both exist)
-      let combined = 0;
-      if (aiScore !== null && judgeAvg !== null) {
-        combined = Number((aiScore * 0.4 + judgeAvg * 0.6).toFixed(1));
-      } else if (aiScore !== null) {
-        combined = aiScore;
-      } else if (judgeAvg !== null) {
-        combined = judgeAvg;
-      }
+    const rows = filteredProjects.map(proj => {
+      const { aiScore, judgeAvg, combined } = this.computeProjectScores(proj);
+      const effectiveCombined =
+        typeof proj.combinedScore === "number" && (aiScore !== null || judgeAvg !== null)
+          ? combined
+          : combined;
 
       return {
         projectId: proj.id,
         projectName: proj.projectName,
         teamName: proj.teamName,
+        hackathonId: proj.hackathonId,
+        status: aiScore !== null ? ("evaluated" as const) : proj.status,
         aiOverallScore: aiScore,
         judgeAverageScore: judgeAvg,
-        combinedScore: combined,
-        rank: 0 // Will be set after sorting
+        combinedScore: effectiveCombined,
+        rank: typeof proj.officialRank === "number" ? proj.officialRank : 0,
+        createdAt: proj.createdAt
       };
-    })
-    .sort((a, b) => b.combinedScore - a.combinedScore)
-    .map((item, idx) => ({
-      ...item,
-      rank: idx + 1
-    }));
+    });
+
+    // If single hackathon and every project has a unique persisted officialRank, preserve that exact locked rank
+    const allHavePersistedRanks =
+      Boolean(hackathonId) &&
+      rows.length > 0 &&
+      rows.every(r => r.rank > 0) &&
+      new Set(rows.map(r => r.rank)).size === rows.length;
+
+    if (allHavePersistedRanks) {
+      return rows
+        .sort((a, b) => a.rank - b.rank)
+        .map(({ createdAt: _createdAt, ...rest }) => rest);
+    }
+
+    // Otherwise sort deterministically (never arbitrary array order)
+    return this.sortLeaderboardDeterministically(rows).map((item, idx) => {
+      const { createdAt: _createdAt, ...rest } = item;
+      return {
+        ...rest,
+        rank: idx + 1
+      };
+    });
   }
 }
 

@@ -8,6 +8,7 @@ import { ProjectDetailView } from "./components/ProjectDetailView.js";
 import { ProjectSubmissionForm } from "./components/ProjectSubmissionForm.js";
 import { HackathonDetailView } from "./components/HackathonDetailView.js";
 import { CredentialsLedger } from "./components/CredentialsLedger.js";
+import { CertificateGeneratorStudio } from "./components/CertificateGeneratorStudio.js";
 import { UserRole } from "./types";
 
 import { FolderGit, Search, Calendar, RefreshCw, Shield, AlertCircle } from "lucide-react";
@@ -29,6 +30,7 @@ export default function App() {
     }
   });
   const [currentTab, setCurrentTab] = useState<string>("projects");
+  const [returnTab, setReturnTab] = useState<string>("projects");
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
 
   // Projects general list states (used for counts per hackathon)
@@ -141,7 +143,8 @@ export default function App() {
     }
   }, []);
 
-  const handleSelectProject = (projectId: string) => {
+  const handleSelectProject = (projectId: string, sourceTab?: string) => {
+    setReturnTab(sourceTab || currentTab || "projects");
     setSelectedProjectId(projectId);
     setCurrentTab("project-detail");
   };
@@ -166,10 +169,14 @@ export default function App() {
       <Navbar
         user={user}
         currentTab={currentTab}
+        activeNavTab={currentTab === "project-detail" ? returnTab : currentTab}
         onChangeTab={(tab) => {
           setCurrentTab(tab);
           setSelectedProjectId(null);
           if (tab === "projects") {
+            setSelectedHackathon(null);
+          }
+          if (tab === "projects" || tab === "leaderboard") {
             fetchProjectsList();
             fetchHackathonsList();
           }
@@ -185,7 +192,8 @@ export default function App() {
             currentUser={user}
             onBack={() => {
               setSelectedProjectId(null);
-              setCurrentTab("projects");
+              setCurrentTab(returnTab || "projects");
+              fetchProjectsList();
             }}
           />
         ) : (
@@ -195,7 +203,7 @@ export default function App() {
                 <LeaderboardView
                   token={token || ""}
                   currentUser={user}
-                  onSelectProject={handleSelectProject}
+                  onSelectProject={(projectId) => handleSelectProject(projectId, "leaderboard")}
                 />
                 <div className="border-t border-slate-200 pt-8">
                   <AnalyticsReport token={token || ""} />
@@ -211,10 +219,7 @@ export default function App() {
                     token={token || ""}
                     currentUser={user}
                     onBack={() => setSelectedHackathon(null)}
-                    onSelectProject={(projectId) => {
-                      setSelectedProjectId(projectId);
-                      setCurrentTab("project-detail");
-                    }}
+                    onSelectProject={(projectId) => handleSelectProject(projectId, "projects")}
                     onSubmitProjectToHackathon={(hackathonId) => {
                       setPreselectedHkIdForSubmit(hackathonId);
                       setCurrentTab("submit-project");
@@ -386,6 +391,19 @@ export default function App() {
               </div>
             )}
 
+            {currentTab === "cert-generator" && (
+              <div className="space-y-8 animate-fade-in">
+                <CertificateGeneratorStudio
+                  token={token}
+                  currentUser={user}
+                  onCertificatesIssued={() => {
+                    fetchProjectsList();
+                    fetchHackathonsList();
+                  }}
+                />
+              </div>
+            )}
+
             {currentTab === "login" && (
               <div className="max-w-md mx-auto py-4 animate-fade-in">
                 <AuthScreen onLoginSuccess={handleLoginSuccess} />
@@ -394,7 +412,10 @@ export default function App() {
 
             {currentTab === "admin" &&
               (user && user.role === "Admin" ? (
-                <AdminDashboard token={token || ""} />
+                <AdminDashboard
+                  token={token || ""}
+                  onOpenCertStudio={() => setCurrentTab("cert-generator")}
+                />
               ) : (
                 <div className="max-w-md mx-auto bg-white border border-slate-200 rounded-2xl p-8 text-center space-y-4 shadow-sm animate-fade-in mt-8">
                   <Shield className="w-12 h-12 text-rose-500 mx-auto" />

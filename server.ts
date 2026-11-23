@@ -309,7 +309,10 @@ app.get("/api/auth/me", authenticateToken, (req: AuthRequest, res: Response) => 
 // GET /projects
 app.get("/api/projects", optionalAuthenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    await db.refreshCollection("projects");
+    await Promise.all([
+      db.refreshCollection("projects"),
+      db.refreshCollection("hackathons")
+    ]);
     const projects = db.getProjects();
     res.json(projects);
   } catch (error: any) {
@@ -322,6 +325,7 @@ app.get("/api/projects/:id", optionalAuthenticateToken, async (req: AuthRequest,
   try {
     await Promise.all([
       db.refreshCollection("projects"),
+      db.refreshCollection("hackathons"),
       db.refreshCollection("aiEvaluations"),
       db.refreshCollection("judgeReviews"),
       db.refreshCollection("githubAnalyses"),
@@ -334,6 +338,10 @@ app.get("/api/projects/:id", optionalAuthenticateToken, async (req: AuthRequest,
       return;
     }
 
+    const hackathon = db.getHackathons().find(h => h.id === project.hackathonId) || null;
+    const leaderboard = db.getLeaderboard(project.hackathonId);
+    const lbEntry = leaderboard.find(l => l.projectId === project.id);
+
     // Include evaluations, reviews, analysis, comments, and issued certificates
     const aiEvaluation = db.getAIEvaluations().find(e => e.projectId === project.id) || null;
     const judgeReviews = db.getJudgeReviews().filter(r => r.projectId === project.id);
@@ -343,6 +351,19 @@ app.get("/api/projects/:id", optionalAuthenticateToken, async (req: AuthRequest,
 
     res.json({
       ...project,
+      hackathonName: hackathon?.name || project.hackathonName,
+      hackathon: hackathon ? {
+        id: hackathon.id,
+        name: hackathon.name,
+        startDate: hackathon.startDate,
+        endDate: hackathon.endDate,
+        active: hackathon.active
+      } : null,
+      officialRank: project.officialRank ?? lbEntry?.rank ?? null,
+      combinedScore: project.combinedScore ?? lbEntry?.combinedScore ?? null,
+      aiOverallScore: project.aiOverallScore ?? lbEntry?.aiOverallScore ?? null,
+      judgeAverageScore: project.judgeAverageScore ?? lbEntry?.judgeAverageScore ?? null,
+      totalHackathonEntries: leaderboard.length,
       aiEvaluation,
       judgeReviews,
       githubAnalysis,
@@ -1153,6 +1174,7 @@ async function executeAIEvaluation(projectId: string): Promise<any> {
         model: GEMINI_MODEL,
         contents: evaluationPrompt,
         config: {
+          temperature: 0,
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.OBJECT,
@@ -1410,19 +1432,55 @@ app.post("/api/evaluate/:project_id", authenticateToken, authorizeRoles("Admin",
 
 app.post("/api/evaluate-all", authenticateToken, authorizeRoles("Admin", "Judge"), async (req: Request, res: Response) => {
   try {
-    await db.refreshCollection("projects");
-    const hackathonId = req.body.hackathonId || req.query.hackathonId;
+    await Promise.all([
+      db.refreshCollection("projects"),
+      db.refreshCollection("aiEvaluations")
+    ]);
+    const hackathonId = (req.body?.hackathonId || req.query?.hackathonId) as string | undefined;
+    const force = req.body?.force === true || req.query?.force === "true";
+
     let projects = db.getProjects();
     if (hackathonId) {
       projects = projects.filter(p => p.hackathonId === hackathonId);
     }
+
+    const existingEvalIds = new Set(db.getAIEvaluations().map(e => e.projectId));
+    const targets = force
+      ? projects
+      : projects.filter(p => p.status !== "evaluated" || !existingEvalIds.has(p.id));
+
+    const skippedEvaluatedCount = projects.length - targets.length;
     const results = [];
-    for (const project of projects) {
-      console.log(`Mass Evaluation: grading ${project.projectName} (${project.id}) for hackathon ${hackathonId || "all"}...`);
+    for (const project of targets) {
+      console.log(`Evaluation Pass (${force ? "force" : "pending-only"}): grading ${project.projectName} (${project.id}) for hackathon ${hackathonId || "all"}...`);
       const aiEval = await executeAIEvaluation(project.id);
       results.push(aiEval);
     }
-    res.json({ success: true, evaluatedCount: projects.length, results });
+
+    const leaderboard = await db.syncHackathonRankings(hackathonId || undefined);
+
+    res.json({
+      success: true,
+      evaluatedCount: results.length,
+      skippedEvaluatedCount,
+      totalProjects: projects.length,
+      leaderboard: hackathonId ? leaderboard : undefined,
+      results
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/hackathons/:id/recalculate-ranks", authenticateToken, authorizeRoles("Admin", "Judge"), async (req: Request, res: Response) => {
+  try {
+    await Promise.all([
+      db.refreshCollection("projects"),
+      db.refreshCollection("aiEvaluations"),
+      db.refreshCollection("judgeReviews")
+    ]);
+    const leaderboard = await db.syncHackathonRankings(req.params.id);
+    res.json({ success: true, leaderboard });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -1801,75 +1859,405 @@ app.put("/api/admin/users/:id/role", authenticateToken, authorizeRoles("Admin"),
   }
 });
 
-// POST /api/admin/certificates
-app.post("/api/admin/certificates", authenticateToken, authorizeRoles("Admin"), async (req: Request, res: Response) => {
-  try {
-    const { projectId, recipientEmail, recipientName, role } = req.body;
-    if (!projectId || !recipientEmail || !recipientName || !role) {
-      res.status(400).json({ error: "Missing required fields to issue hackathon certificate." });
-      return;
+const getSuggestedAwardForRank = (rank: number | null, isEvaluated: boolean): string => {
+  if (!isEvaluated || rank === null || rank <= 0) {
+    return "Official Hackathon Participant";
+  }
+  if (rank === 1) return "Grand Prize Winner (1st Place)";
+  if (rank === 2) return "First Runner-Up (2nd Place)";
+  if (rank === 3) return "Second Runner-Up (3rd Place)";
+  return "Finalist & Merit Award";
+};
+
+const resolveProjectContextForCert = async (projectId: string) => {
+  await Promise.all([
+    db.refreshCollection("projects"),
+    db.refreshCollection("hackathons"),
+    db.refreshCollection("aiEvaluations"),
+    db.refreshCollection("judgeReviews"),
+    db.refreshCollection("users"),
+    db.refreshCollection("certificates")
+  ]);
+
+  let proj = db.getProjects().find(p => p.id === projectId);
+  if (!proj) return null;
+
+  if (typeof proj.officialRank !== "number" || proj.officialRank <= 0) {
+    await db.syncHackathonRankings(proj.hackathonId);
+    proj = db.getProjects().find(p => p.id === projectId) || proj;
+  }
+
+  const hk = db.getHackathons().find(h => h.id === proj!.hackathonId);
+  const leaderboard = db.getLeaderboard(proj.hackathonId);
+  const lbEntry = leaderboard.find(l => l.projectId === proj!.id);
+
+  const lockedRank = proj.officialRank ?? lbEntry?.rank ?? null;
+  const isEvaluated =
+    proj.status === "evaluated" ||
+    lbEntry?.aiOverallScore !== null ||
+    lbEntry?.judgeAverageScore !== null;
+  const lockedScore = isEvaluated
+    ? (proj.combinedScore ?? lbEntry?.combinedScore ?? null)
+    : null;
+
+  return {
+    proj,
+    hk,
+    lockedRank,
+    lockedScore,
+    isEvaluated,
+    totalHackathonEntries: leaderboard.length
+  };
+};
+
+const resolveFlexibleCertTarget = async (body: any, requesterName?: string) => {
+  const mode = String(body?.mode || "").trim().toLowerCase();
+  const rawProjectId = String(body?.projectId || "").trim();
+
+  // Mode B: Inline create new hackathon (optional) + create project submission + issue cert(s)
+  if (mode === "create_project" || body?.createProject === true || rawProjectId === "__new__") {
+    let createdHackathon: any = null;
+    let targetHackathonId = String(body?.hackathonId || "").trim();
+
+    if (body?.newHackathon && String(body.newHackathon.name || "").trim()) {
+      const hkName = String(body.newHackathon.name || "").trim();
+      const hkDesc = String(body.newHackathon.description || `${hkName} official hackathon event.`).trim();
+      const today = new Date().toISOString().slice(0, 10);
+      const hkStart = String(body.newHackathon.startDate || today).trim();
+      const hkEnd = String(body.newHackathon.endDate || today).trim();
+      createdHackathon = await db.createHackathon({
+        name: hkName,
+        description: hkDesc,
+        startDate: hkStart,
+        endDate: hkEnd,
+        active: body.newHackathon.active !== undefined ? Boolean(body.newHackathon.active) : true
+      });
+      targetHackathonId = createdHackathon.id;
     }
 
-    const proj = db.getProjects().find(p => p.id === projectId);
-    if (!proj) {
-      res.status(404).json({ error: "Associated project submission not found." });
-      return;
+    await db.refreshCollection("hackathons");
+    await db.refreshCollection("projects");
+    const fallbackHackathon = db.getHackathons().find(h => h.active) || db.getHackathons()[0];
+    if (!targetHackathonId) {
+      targetHackathonId = fallbackHackathon ? fallbackHackathon.id : "hk_default";
     }
 
-    const hk = db.getHackathons().find(h => h.id === proj.hackathonId);
+    const pd = body?.projectDetails || body;
+    const projectName = String(pd?.projectName || "").trim();
+    const teamName = String(pd?.teamName || "").trim();
+    const teamMembers = String(pd?.teamMembers || requesterName || teamName).trim();
+    const description = String(pd?.description || "").trim() || `${projectName} submitted for ${teamName}.`;
+    const problemStatement = String(pd?.problemStatement || "").trim() || `Hackathon challenge addressed by ${projectName}.`;
+    const githubUrl = String(pd?.githubUrl || "").trim();
+    const aiStudioUrl = String(pd?.aiStudioUrl || "").trim();
+    const liveUrl = String(pd?.liveUrl || "").trim();
+    const demoVideoUrl = String(pd?.demoVideoUrl || "").trim();
+    const presentationDocName = String(pd?.presentationDocName || "").trim();
+    const presentationDocUrl = String(pd?.presentationDocUrl || "").trim();
 
-    const cert = await db.issueCertificate({
-      projectId,
-      projectName: proj.projectName,
-      teamName: proj.teamName,
-      hackathonName: hk?.name || "HackEval Academic Hackathon",
-      recipientEmail: String(recipientEmail).trim().toLowerCase(),
-      recipientName: String(recipientName).trim(),
-      role: String(role).trim()
+    if (!projectName || !teamName) {
+      throw Object.assign(new Error("Project name and team name are required to register a new submission."), { statusCode: 400 });
+    }
+    if (
+      !isValidOptionalUrl(githubUrl) ||
+      !isValidOptionalUrl(aiStudioUrl) ||
+      !isValidOptionalUrl(liveUrl) ||
+      !isValidOptionalUrl(demoVideoUrl) ||
+      !isValidOptionalUrl(presentationDocUrl)
+    ) {
+      throw Object.assign(new Error("All submitted project URLs must use http:// or https://."), { statusCode: 400 });
+    }
+
+    const dupProject = db.getProjects().find(
+      p => p.hackathonId === targetHackathonId &&
+      (p.projectName.toLowerCase() === projectName.toLowerCase() ||
+       (githubUrl && p.githubUrl && p.githubUrl.toLowerCase() === githubUrl.toLowerCase()))
+    );
+    if (dupProject) {
+      throw Object.assign(new Error("A project with this name or GitHub repository already exists in the selected hackathon."), { statusCode: 400 });
+    }
+
+    const createdProject = await db.createProject({
+      projectName,
+      teamName,
+      teamMembers,
+      description,
+      problemStatement,
+      githubUrl,
+      aiStudioUrl,
+      liveUrl,
+      demoVideoUrl,
+      presentationDocName,
+      presentationDocUrl,
+      hackathonId: targetHackathonId
     });
 
-    res.status(201).json(cert);
+    const ctx = await resolveProjectContextForCert(createdProject.id);
+    if (!ctx) {
+      throw Object.assign(new Error("Created project could not be resolved."), { statusCode: 500 });
+    }
+    return {
+      ...ctx,
+      createdProject,
+      createdHackathon,
+      isCustom: false
+    };
+  }
+
+  // Mode C: Standalone Custom Certificate (no repository required; stored verifiably in ledger)
+  if (mode === "custom" || rawProjectId === "__custom__" || rawProjectId.startsWith("custom_")) {
+    const projectName = String(body?.projectName || "").trim();
+    const teamName = String(body?.teamName || "").trim();
+    if (!projectName || !teamName) {
+      throw Object.assign(new Error("Project name and team name are required for a custom certificate."), { statusCode: 400 });
+    }
+
+    await db.refreshCollection("hackathons");
+    const hk = body?.hackathonId
+      ? db.getHackathons().find(h => h.id === String(body.hackathonId).trim())
+      : undefined;
+
+    const customRank =
+      body?.projectRank !== undefined && body?.projectRank !== null && body?.projectRank !== ""
+        ? Number(body.projectRank)
+        : null;
+    const customScore =
+      body?.combinedScore !== undefined && body?.combinedScore !== null && body?.combinedScore !== ""
+        ? Number(body.combinedScore)
+        : null;
+    const customEntries =
+      body?.totalHackathonEntries !== undefined && body?.totalHackathonEntries !== null && body?.totalHackathonEntries !== ""
+        ? Number(body.totalHackathonEntries)
+        : null;
+
+    return {
+      proj: {
+        id: rawProjectId.startsWith("custom_") && rawProjectId.length > 7
+          ? rawProjectId
+          : "custom_" + crypto.randomBytes(5).toString("hex"),
+        projectName,
+        teamName,
+        hackathonId: hk?.id || String(body?.hackathonId || "").trim() || undefined
+      },
+      hk,
+      customHackathonName: String(body?.hackathonName || hk?.name || "HackEval Academic Hackathon").trim(),
+      lockedRank: Number.isFinite(customRank) && (customRank as number) > 0 ? customRank : null,
+      lockedScore: Number.isFinite(customScore) && (customScore as number) >= 0 ? customScore : null,
+      isEvaluated: Number.isFinite(customRank) && (customRank as number) > 0,
+      totalHackathonEntries: Number.isFinite(customEntries) && (customEntries as number) > 0 ? customEntries : null,
+      createdProject: null,
+      createdHackathon: null,
+      isCustom: true
+    };
+  }
+
+  // Mode A: Existing submitted project
+  if (!rawProjectId) {
+    throw Object.assign(new Error("Project ID is required to issue a certificate."), { statusCode: 400 });
+  }
+  const ctx = await resolveProjectContextForCert(rawProjectId);
+  if (!ctx) {
+    throw Object.assign(new Error("Associated project submission not found."), { statusCode: 404 });
+  }
+  return {
+    ...ctx,
+    customHackathonName: body?.hackathonName ? String(body.hackathonName).trim() : undefined,
+    createdProject: null,
+    createdHackathon: null,
+    isCustom: false
+  };
+};
+
+// POST /api/admin/certificates
+app.post("/api/admin/certificates", authenticateToken, authorizeRoles("Admin"), async (req: AuthRequest, res: Response) => {
+  try {
+    const { recipientEmail, recipientName, role, issuedAt } = req.body;
+    const cleanName = String(recipientName || "").trim();
+    const cleanEmail = String(recipientEmail || "").trim().toLowerCase();
+    if (!cleanName || !cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      res.status(400).json({ error: "A valid recipient name and email address are required." });
+      return;
+    }
+
+    const target = await resolveFlexibleCertTarget(req.body, req.user?.name);
+    const { proj, hk, lockedRank, lockedScore, isEvaluated, totalHackathonEntries, customHackathonName, createdProject, createdHackathon } = target as any;
+
+    const requestedRole = String(role || "").trim();
+    const finalRole =
+      !requestedRole || requestedRole.toLowerCase() === "auto"
+        ? getSuggestedAwardForRank(lockedRank, isEvaluated)
+        : requestedRole;
+
+    const cert = await db.issueCertificate({
+      projectId: proj.id,
+      projectName: proj.projectName,
+      teamName: proj.teamName,
+      hackathonId: proj.hackathonId,
+      hackathonName: customHackathonName || hk?.name || "HackEval Academic Hackathon",
+      projectRank: lockedRank,
+      combinedScore: lockedScore,
+      totalHackathonEntries,
+      recipientEmail: cleanEmail,
+      recipientName: cleanName,
+      role: finalRole,
+      issuedAt: issuedAt ? String(issuedAt) : undefined
+    });
+
+    res.status(201).json({
+      ...cert,
+      ...(createdProject ? { createdProject } : {}),
+      ...(createdHackathon ? { createdHackathon } : {})
+    });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(error?.statusCode || 500).json({ error: error.message });
   }
 });
 
 // POST /api/admin/certificates/batch
-app.post("/api/admin/certificates/batch", authenticateToken, authorizeRoles("Admin"), async (req: Request, res: Response) => {
+app.post("/api/admin/certificates/batch", authenticateToken, authorizeRoles("Admin"), async (req: AuthRequest, res: Response) => {
   try {
-    const { projectId, recipients, role } = req.body;
-    if (!projectId || !Array.isArray(recipients) || recipients.length === 0 || !role) {
-      res.status(400).json({ error: "Project ID, non-empty recipients list, and role are required." });
+    const { recipients, role, issuedAt } = req.body;
+    if (!Array.isArray(recipients) || recipients.length === 0) {
+      res.status(400).json({ error: "A non-empty recipients list is required." });
       return;
     }
 
-    const proj = db.getProjects().find(p => p.id === projectId);
-    if (!proj) {
-      res.status(404).json({ error: "Associated project submission not found." });
+    const validRecipients = recipients
+      .map((r: any) => ({
+        name: String(r?.name || "").trim(),
+        email: String(r?.email || "").trim().toLowerCase()
+      }))
+      .filter((r: { name: string; email: string }) => r.name.length > 0 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.email));
+
+    if (validRecipients.length === 0) {
+      res.status(400).json({ error: "At least one recipient with a valid name and email address is required." });
       return;
     }
 
-    const hk = db.getHackathons().find(h => h.id === proj.hackathonId);
+    const target = await resolveFlexibleCertTarget(req.body, req.user?.name);
+    const { proj, hk, lockedRank, lockedScore, isEvaluated, totalHackathonEntries, customHackathonName, createdProject, createdHackathon } = target as any;
+
+    const requestedRole = String(role || "").trim();
+    const finalRole =
+      !requestedRole || requestedRole.toLowerCase() === "auto"
+        ? getSuggestedAwardForRank(lockedRank, isEvaluated)
+        : requestedRole;
+
     const issued: any[] = [];
-
-    for (const r of recipients) {
-      const rName = String(r?.name || "").trim();
-      const rEmail = String(r?.email || "").trim().toLowerCase();
-      if (!rName || !rEmail) continue;
-
+    for (const r of validRecipients) {
       const cert = await db.issueCertificate({
-        projectId,
+        projectId: proj.id,
         projectName: proj.projectName,
         teamName: proj.teamName,
-        hackathonName: hk?.name || "HackEval Academic Hackathon",
-        recipientEmail: rEmail,
-        recipientName: rName,
-        role: String(role).trim()
+        hackathonId: proj.hackathonId,
+        hackathonName: customHackathonName || hk?.name || "HackEval Academic Hackathon",
+        projectRank: lockedRank,
+        combinedScore: lockedScore,
+        totalHackathonEntries,
+        recipientEmail: r.email,
+        recipientName: r.name,
+        role: finalRole,
+        issuedAt: issuedAt ? String(issuedAt) : undefined
       });
       issued.push(cert);
     }
 
-    res.status(201).json({ issuedCount: issued.length, certificates: issued });
+    res.status(201).json({
+      issuedCount: issued.length,
+      role: finalRole,
+      certificates: issued,
+      ...(createdProject ? { createdProject } : {}),
+      ...(createdHackathon ? { createdHackathon } : {})
+    });
+  } catch (error: any) {
+    res.status(error?.statusCode || 500).json({ error: error.message });
+  }
+});
+
+// POST /api/admin/certificates/project (Project-linked auto-generation for entire team roster)
+app.post("/api/admin/certificates/project", authenticateToken, authorizeRoles("Admin"), async (req: Request, res: Response) => {
+  try {
+    const { projectId, role, recipients } = req.body;
+    if (!projectId) {
+      res.status(400).json({ error: "Project ID is required to generate project certificates." });
+      return;
+    }
+
+    const ctx = await resolveProjectContextForCert(String(projectId));
+    if (!ctx) {
+      res.status(404).json({ error: "Associated project submission not found." });
+      return;
+    }
+
+    const { proj, hk, lockedRank, lockedScore, isEvaluated, totalHackathonEntries } = ctx;
+    const requestedRole = String(role || "").trim();
+    const finalRole =
+      !requestedRole || requestedRole.toLowerCase() === "auto"
+        ? getSuggestedAwardForRank(lockedRank, isEvaluated)
+        : requestedRole;
+
+    const allUsers = db.getUsers();
+    let targetList: Array<{ name: string; email: string }> = [];
+
+    if (Array.isArray(recipients) && recipients.length > 0) {
+      targetList = recipients
+        .map((r: any) => ({
+          name: String(r?.name || "").trim(),
+          email: String(r?.email || "").trim().toLowerCase()
+        }))
+        .filter((r: { name: string; email: string }) => r.name.length > 0);
+    } else {
+      const parsedMembers = (proj.teamMembers || "")
+        .split(",")
+        .map(m => m.trim())
+        .filter(Boolean);
+      const rosterNames = parsedMembers.length > 0 ? parsedMembers : [proj.teamName];
+      targetList = rosterNames.map((memberName) => {
+        const matchedUser = allUsers.find(
+          u => u.name.trim().toLowerCase() === memberName.toLowerCase()
+        );
+        const slug = memberName.toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.|\.$/g, "") || "member";
+        return {
+          name: memberName,
+          email: matchedUser?.email?.toLowerCase() || `${slug}.${proj.id}@participant.hackeval.edu`
+        };
+      });
+    }
+
+    const issued: any[] = [];
+    for (const member of targetList) {
+      const slug = member.name.toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.|\.$/g, "") || "member";
+      const matchedUser = allUsers.find(
+        u => u.name.trim().toLowerCase() === member.name.toLowerCase()
+      );
+      const finalEmail =
+        member.email ||
+        matchedUser?.email?.toLowerCase() ||
+        `${slug}.${proj.id}@participant.hackeval.edu`;
+
+      const cert = await db.issueCertificate({
+        projectId: proj.id,
+        projectName: proj.projectName,
+        teamName: proj.teamName,
+        hackathonId: proj.hackathonId,
+        hackathonName: hk?.name || "HackEval Academic Hackathon",
+        projectRank: lockedRank,
+        combinedScore: lockedScore,
+        totalHackathonEntries,
+        recipientEmail: finalEmail,
+        recipientName: member.name,
+        role: finalRole
+      });
+      issued.push(cert);
+    }
+
+    res.status(201).json({
+      issuedCount: issued.length,
+      role: finalRole,
+      projectRank: lockedRank,
+      combinedScore: lockedScore,
+      certificates: issued
+    });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -1878,7 +2266,11 @@ app.post("/api/admin/certificates/batch", authenticateToken, authorizeRoles("Adm
 // GET /api/certificates/verify/:code (Public verification endpoint)
 app.get("/api/certificates/verify/:code", async (req: Request, res: Response) => {
   try {
-    await db.refreshCollection("certificates");
+    await Promise.all([
+      db.refreshCollection("certificates"),
+      db.refreshCollection("projects"),
+      db.refreshCollection("hackathons")
+    ]);
     const code = String(req.params.code || "").trim().toUpperCase();
     const cert = db.getCertificates().find(c => c.certificateCode.toUpperCase() === code);
     if (!cert) {
@@ -1894,7 +2286,11 @@ app.get("/api/certificates/verify/:code", async (req: Request, res: Response) =>
 // GET /api/certificates
 app.get("/api/certificates", optionalAuthenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    await db.refreshCollection("certificates");
+    await Promise.all([
+      db.refreshCollection("certificates"),
+      db.refreshCollection("projects"),
+      db.refreshCollection("hackathons")
+    ]);
     let list = db.getCertificates();
     const code = (req.query.code as string || "").trim();
     const queryEmail = (req.query.email as string || "").trim();

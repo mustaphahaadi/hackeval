@@ -13,39 +13,26 @@ export interface AwardTheme {
   borderClass: string;
   sealGradientClass: string;
   ribbonClass: string;
+  badgeClass: string;
+  iconColorClass: string;
+}
+
+export function getSuggestedAwardForRank(
+  rank?: number | null,
+  isEvaluated = true
+): string {
+  if (!isEvaluated || !rank || rank <= 0) {
+    return "Official Hackathon Participant";
+  }
+  if (rank === 1) return "Grand Prize Winner (1st Place)";
+  if (rank === 2) return "First Runner-Up (2nd Place)";
+  if (rank === 3) return "Second Runner-Up (3rd Place)";
+  return "Finalist & Merit Award";
 }
 
 export function getAwardTheme(role: string): AwardTheme {
   const r = (role || "").toLowerCase();
-  if (r.includes("first") || r.includes("grand prize") || r.includes("winner") || r.includes("champion")) {
-    return {
-      primaryHex: "#b45309",
-      secondaryHex: "#f59e0b",
-      accentLightHex: "#fffbeb",
-      sealTopHex: "#fbbf24",
-      sealBottomHex: "#b45309",
-      sealLabel: "1ST HONOR",
-      subtitle: "Grand Distinction Award",
-      borderClass: "border-amber-400",
-      sealGradientClass: "from-amber-400 via-yellow-500 to-amber-600",
-      ribbonClass: "bg-amber-600",
-    };
-  }
-  if (r.includes("second") || r.includes("runner-up")) {
-    return {
-      primaryHex: "#475569",
-      secondaryHex: "#94a3b8",
-      accentLightHex: "#f8fafc",
-      sealTopHex: "#cbd5e1",
-      sealBottomHex: "#475569",
-      sealLabel: "2ND HONOR",
-      subtitle: "Silver Distinction",
-      borderClass: "border-slate-400",
-      sealGradientClass: "from-slate-300 via-slate-400 to-zinc-600",
-      ribbonClass: "bg-slate-600",
-    };
-  }
-  if (r.includes("third") || r.includes("bronze")) {
+  if (r.includes("second runner") || r.includes("3rd") || r.includes("third") || r.includes("bronze")) {
     return {
       primaryHex: "#92400e",
       secondaryHex: "#d97706",
@@ -57,6 +44,40 @@ export function getAwardTheme(role: string): AwardTheme {
       borderClass: "border-amber-700/70",
       sealGradientClass: "from-amber-600 via-amber-700 to-amber-900",
       ribbonClass: "bg-amber-800",
+      badgeClass: "bg-amber-50 border-amber-300 text-amber-900",
+      iconColorClass: "text-amber-700",
+    };
+  }
+  if (r.includes("runner-up") || r.includes("runner up") || r.includes("2nd") || r.includes("second")) {
+    return {
+      primaryHex: "#475569",
+      secondaryHex: "#94a3b8",
+      accentLightHex: "#f8fafc",
+      sealTopHex: "#cbd5e1",
+      sealBottomHex: "#475569",
+      sealLabel: "2ND HONOR",
+      subtitle: "Silver Distinction",
+      borderClass: "border-slate-400",
+      sealGradientClass: "from-slate-300 via-slate-400 to-zinc-600",
+      ribbonClass: "bg-slate-600",
+      badgeClass: "bg-slate-100 border-slate-300 text-slate-800",
+      iconColorClass: "text-slate-600",
+    };
+  }
+  if (r.includes("1st") || r.includes("first") || r.includes("grand prize") || r.includes("winner") || r.includes("champion")) {
+    return {
+      primaryHex: "#b45309",
+      secondaryHex: "#f59e0b",
+      accentLightHex: "#fffbeb",
+      sealTopHex: "#fbbf24",
+      sealBottomHex: "#b45309",
+      sealLabel: "1ST HONOR",
+      subtitle: "Grand Distinction Award",
+      borderClass: "border-amber-400",
+      sealGradientClass: "from-amber-400 via-yellow-500 to-amber-600",
+      ribbonClass: "bg-amber-600",
+      badgeClass: "bg-amber-50 border-amber-200 text-amber-800",
+      iconColorClass: "text-amber-600",
     };
   }
   if (r.includes("ai") || r.includes("technical") || r.includes("innovative") || r.includes("integration")) {
@@ -71,6 +92,8 @@ export function getAwardTheme(role: string): AwardTheme {
       borderClass: "border-indigo-400",
       sealGradientClass: "from-indigo-500 via-violet-500 to-indigo-700",
       ribbonClass: "bg-indigo-600",
+      badgeClass: "bg-indigo-50 border-indigo-200 text-indigo-800",
+      iconColorClass: "text-indigo-600",
     };
   }
   if (r.includes("finalist") || r.includes("honorable") || r.includes("outstanding")) {
@@ -85,6 +108,8 @@ export function getAwardTheme(role: string): AwardTheme {
       borderClass: "border-sky-400",
       sealGradientClass: "from-sky-400 via-cyan-500 to-indigo-600",
       ribbonClass: "bg-sky-600",
+      badgeClass: "bg-sky-50 border-sky-200 text-sky-800",
+      iconColorClass: "text-sky-600",
     };
   }
   return {
@@ -98,6 +123,8 @@ export function getAwardTheme(role: string): AwardTheme {
     borderClass: "border-slate-300",
     sealGradientClass: "from-slate-500 via-slate-600 to-slate-700",
     ribbonClass: "bg-slate-600",
+    badgeClass: "bg-slate-50 border-slate-200 text-slate-700",
+    iconColorClass: "text-slate-600",
   };
 }
 
@@ -343,8 +370,11 @@ export async function renderCertificateA4Canvas(cert: Certificate): Promise<HTML
   ctx.fillStyle = theme.primaryHex;
   ctx.fillText(cleanRole.toUpperCase(), W / 2, boxY + boxH / 2 + 2);
 
-  // 7. Project & Team Metadata Box
-  const metaW = 1760;
+  // 7. Project, Team & Official Standing Metadata Box
+  const hasStanding =
+    (typeof cert.projectRank === "number" && cert.projectRank > 0) ||
+    (typeof cert.combinedScore === "number" && cert.combinedScore > 0);
+  const metaW = hasStanding ? 2120 : 1760;
   const metaH = 158;
   const metaX = W / 2 - metaW / 2;
   const metaY = 1210;
@@ -356,28 +386,70 @@ export async function renderCertificateA4Canvas(cert: Certificate): Promise<HTML
   ctx.lineWidth = 3;
   ctx.stroke();
 
-  // Vertical divider inside meta box
-  ctx.beginPath();
-  ctx.moveTo(W / 2, metaY + 28);
-  ctx.lineTo(W / 2, metaY + metaH - 28);
-  ctx.stroke();
+  if (hasStanding) {
+    const colW = metaW / 3;
+    ctx.beginPath();
+    ctx.moveTo(metaX + colW, metaY + 28);
+    ctx.lineTo(metaX + colW, metaY + metaH - 28);
+    ctx.moveTo(metaX + colW * 2, metaY + 28);
+    ctx.lineTo(metaX + colW * 2, metaY + metaH - 28);
+    ctx.stroke();
 
-  ctx.textAlign = "left";
-  ctx.fillStyle = "#64748b";
-  ctx.font = "700 22px 'JetBrains Mono', monospace";
-  ctx.fillText("PROJECT SUBMISSION", metaX + 56, metaY + 52);
-  ctx.fillStyle = "#0f172a";
-  ctx.font = "700 32px 'Plus Jakarta Sans', system-ui, sans-serif";
-  const projDisplay = cert.projectName.length > 38 ? cert.projectName.slice(0, 35) + "..." : cert.projectName;
-  ctx.fillText(projDisplay, metaX + 56, metaY + 104);
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#64748b";
+    ctx.font = "700 21px 'JetBrains Mono', monospace";
+    ctx.fillText("PROJECT SUBMISSION", metaX + 44, metaY + 52);
+    ctx.fillStyle = "#0f172a";
+    ctx.font = "700 30px 'Plus Jakarta Sans', system-ui, sans-serif";
+    const projDisplay = cert.projectName.length > 28 ? cert.projectName.slice(0, 25) + "..." : cert.projectName;
+    ctx.fillText(projDisplay, metaX + 44, metaY + 104);
 
-  ctx.fillStyle = "#64748b";
-  ctx.font = "700 22px 'JetBrains Mono', monospace";
-  ctx.fillText("DEVELOPMENT TEAM", W / 2 + 56, metaY + 52);
-  ctx.fillStyle = "#0f172a";
-  ctx.font = "700 32px 'Plus Jakarta Sans', system-ui, sans-serif";
-  const teamDisplay = cert.teamName.length > 34 ? cert.teamName.slice(0, 31) + "..." : cert.teamName;
-  ctx.fillText(teamDisplay, W / 2 + 56, metaY + 104);
+    ctx.fillStyle = "#64748b";
+    ctx.font = "700 21px 'JetBrains Mono', monospace";
+    ctx.fillText("DEVELOPMENT TEAM", metaX + colW + 44, metaY + 52);
+    ctx.fillStyle = "#0f172a";
+    ctx.font = "700 30px 'Plus Jakarta Sans', system-ui, sans-serif";
+    const teamDisplay = cert.teamName.length > 26 ? cert.teamName.slice(0, 23) + "..." : cert.teamName;
+    ctx.fillText(teamDisplay, metaX + colW + 44, metaY + 104);
+
+    ctx.fillStyle = "#64748b";
+    ctx.font = "700 21px 'JetBrains Mono', monospace";
+    ctx.fillText("OFFICIAL STANDING", metaX + colW * 2 + 44, metaY + 52);
+    ctx.fillStyle = theme.primaryHex;
+    ctx.font = "800 30px 'JetBrains Mono', monospace";
+    const rankPart =
+      typeof cert.projectRank === "number" && cert.projectRank > 0
+        ? `RANK #${cert.projectRank}${cert.totalHackathonEntries ? `/${cert.totalHackathonEntries}` : ""}`
+        : "EVALUATED";
+    const scorePart =
+      typeof cert.combinedScore === "number" && cert.combinedScore > 0
+        ? ` · ${cert.combinedScore}/100`
+        : "";
+    ctx.fillText(`${rankPart}${scorePart}`, metaX + colW * 2 + 44, metaY + 104);
+  } else {
+    // Vertical divider inside meta box
+    ctx.beginPath();
+    ctx.moveTo(W / 2, metaY + 28);
+    ctx.lineTo(W / 2, metaY + metaH - 28);
+    ctx.stroke();
+
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#64748b";
+    ctx.font = "700 22px 'JetBrains Mono', monospace";
+    ctx.fillText("PROJECT SUBMISSION", metaX + 56, metaY + 52);
+    ctx.fillStyle = "#0f172a";
+    ctx.font = "700 32px 'Plus Jakarta Sans', system-ui, sans-serif";
+    const projDisplay = cert.projectName.length > 38 ? cert.projectName.slice(0, 35) + "..." : cert.projectName;
+    ctx.fillText(projDisplay, metaX + 56, metaY + 104);
+
+    ctx.fillStyle = "#64748b";
+    ctx.font = "700 22px 'JetBrains Mono', monospace";
+    ctx.fillText("DEVELOPMENT TEAM", W / 2 + 56, metaY + 52);
+    ctx.fillStyle = "#0f172a";
+    ctx.font = "700 32px 'Plus Jakarta Sans', system-ui, sans-serif";
+    const teamDisplay = cert.teamName.length > 34 ? cert.teamName.slice(0, 31) + "..." : cert.teamName;
+    ctx.fillText(teamDisplay, W / 2 + 56, metaY + 104);
+  }
 
   // 8. Footer: Issuance Date, Central Seal, Committee Signature, and Scannable QR Verification
   const footerCenterY = 1660;

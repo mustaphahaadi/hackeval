@@ -10,9 +10,11 @@ import {
   Check,
   AlertCircle,
   FolderGit,
-  ExternalLink
+  ExternalLink,
+  X
 } from "lucide-react";
 import { HackathonEvent, LeaderboardRanking, UserRole } from "../types";
+import { CertificateGeneratorStudio } from "./CertificateGeneratorStudio.js";
 
 interface HackathonDetailViewProps {
   hackathon: HackathonEvent;
@@ -20,6 +22,7 @@ interface HackathonDetailViewProps {
   currentUser?: {
     id?: string;
     name?: string;
+    email?: string;
     role?: UserRole;
   } | null;
   onBack: () => void;
@@ -40,6 +43,7 @@ export function HackathonDetailView({
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [evaluating, setEvaluating] = useState(false);
+  const [certTargetProject, setCertTargetProject] = useState<any | null>(null);
 
   const canEvaluate = currentUser?.role === "Admin" || currentUser?.role === "Judge";
 
@@ -66,7 +70,7 @@ export function HackathonDetailView({
     fetchHackathonSubmissions();
   }, [hackathon.id]);
 
-  const handleEvaluateAndRankAll = async () => {
+  const handleEvaluateAndRankAll = async (force = false) => {
     setError("");
     setSuccess("");
     setEvaluating(true);
@@ -81,7 +85,7 @@ export function HackathonDetailView({
       const res = await fetch("/api/evaluate-all", {
         method: "POST",
         headers,
-        body: JSON.stringify({ hackathonId: hackathon.id })
+        body: JSON.stringify({ hackathonId: hackathon.id, force })
       });
 
       const data = await res.json().catch(() => ({}));
@@ -90,13 +94,44 @@ export function HackathonDetailView({
       }
 
       setSuccess(
-        `Evaluated ${data.evaluatedCount} submissions for ${hackathon.name} and updated the official rankings.`
+        data.evaluatedCount > 0
+          ? `Evaluated ${data.evaluatedCount} pending submission(s) for ${hackathon.name}${data.skippedEvaluatedCount ? ` (kept ${data.skippedEvaluatedCount} already-graded projects unchanged)` : ""} and locked rankings.`
+          : `All submissions for ${hackathon.name} are already graded; official rankings remain locked.`
       );
       await fetchHackathonSubmissions();
     } catch (err: any) {
       setError(err.message);
     } finally {
       setEvaluating(false);
+    }
+  };
+
+  const handleOpenCertModalForEntry = async (item: LeaderboardRanking) => {
+    const fallbackObj = {
+      id: item.projectId,
+      projectId: item.projectId,
+      projectName: item.projectName,
+      teamName: item.teamName,
+      hackathonId: hackathon.id,
+      hackathonName: hackathon.name,
+      officialRank: item.rank,
+      combinedScore: item.combinedScore,
+      aiOverallScore: item.aiOverallScore,
+      judgeAverageScore: item.judgeAverageScore,
+      totalHackathonEntries: submissions.length,
+      status: item.status || (item.aiOverallScore !== null ? "evaluated" : "pending")
+    };
+    setCertTargetProject(fallbackObj);
+    try {
+      const headers: Record<string, string> = {};
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const res = await fetch(`/api/projects/${item.projectId}`, { headers });
+      if (res.ok) {
+        const fullProj = await res.json();
+        setCertTargetProject(fullProj);
+      }
+    } catch {
+      // Keep fallback snapshot
     }
   };
 
@@ -160,23 +195,34 @@ export function HackathonDetailView({
           </button>
 
           {canEvaluate && (
-            <button
-              onClick={handleEvaluateAndRankAll}
-              disabled={evaluating || submissions.length === 0}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white rounded-xl text-sm font-bold shadow-sm cursor-pointer transition-colors"
-            >
-              {evaluating ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  Grading & Ranking...
-                </>
-              ) : (
-                <>
-                  <Play className="w-4 h-4 fill-current" />
-                  Analyze & Grade All
-                </>
-              )}
-            </button>
+            <>
+              <button
+                onClick={() => handleEvaluateAndRankAll(false)}
+                disabled={evaluating || submissions.length === 0}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white rounded-xl text-sm font-bold shadow-sm cursor-pointer transition-colors"
+              >
+                {evaluating ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    Grading Pending...
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-4 h-4 fill-current" />
+                    Grade Pending & Lock Ranks
+                  </>
+                )}
+              </button>
+              <button
+                onClick={() => handleEvaluateAndRankAll(true)}
+                disabled={evaluating || submissions.length === 0}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-50 text-slate-700 rounded-xl text-xs font-semibold shadow-sm cursor-pointer transition-colors"
+                title="Re-evaluate all projects in this event"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${evaluating ? "animate-spin" : ""}`} />
+                Re-grade All
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -248,6 +294,9 @@ export function HackathonDetailView({
                     </th>
                     <th className="px-6 py-3.5 text-xs font-bold text-slate-500 uppercase tracking-wider text-center w-28">
                       Status
+                    </th>
+                    <th className="px-6 py-3.5 text-xs font-bold text-slate-500 uppercase tracking-wider text-right w-40">
+                      Certificate
                     </th>
                   </tr>
                 </thead>
@@ -330,6 +379,20 @@ export function HackathonDetailView({
                             {isEvaluated ? "Evaluated" : "Waiting"}
                           </span>
                         </td>
+
+                        <td
+                          className="px-6 py-4 whitespace-nowrap text-right"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => handleOpenCertModalForEntry(item)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                          >
+                            <Award className="w-3.5 h-3.5" />
+                            Generate Cert
+                          </button>
+                        </td>
                       </tr>
                     );
                   })}
@@ -339,6 +402,47 @@ export function HackathonDetailView({
           </div>
         )}
       </div>
+
+      {/* Modal: Flexible Certificate Generator for Selected Submission */}
+      {certTargetProject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/75 backdrop-blur-sm overflow-y-auto">
+          <div className="relative w-full max-w-6xl bg-slate-50 rounded-2xl shadow-2xl border border-slate-200 overflow-hidden my-6 max-h-[92vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-slate-200">
+              <div className="flex items-center gap-2.5">
+                <Award className="w-5 h-5 text-indigo-600" />
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Generate Certificate — {certTargetProject.projectName}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Customize recipient name, email, and award title or export Landscape A4 PDF immediately.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCertTargetProject(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg cursor-pointer"
+                aria-label="Close certificate generator"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-5 sm:p-6 overflow-y-auto">
+              <CertificateGeneratorStudio
+                token={token}
+                currentUser={currentUser}
+                initialHackathonId={hackathon.id}
+                initialProject={certTargetProject}
+                compactModal={true}
+                onCertificatesIssued={() => {
+                  fetchHackathonSubmissions();
+                }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

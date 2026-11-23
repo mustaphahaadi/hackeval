@@ -45,10 +45,16 @@ export interface ProjectSubmission {
   liveUrl: string;
   demoVideoUrl: string;
   presentationDocName?: string; // Stored filename
-  presentationDocUrl?: string;  // Simulated upload link
+  presentationDocUrl?: string;  // Presentation deck URL
   hackathonId: string;
+  hackathonName?: string;
   createdAt: string;
   status: "pending" | "evaluated";
+  officialRank?: number | null;
+  combinedScore?: number | null;
+  aiOverallScore?: number | null;
+  judgeAverageScore?: number | null;
+  rankUpdatedAt?: string;
 }
 
 export interface GitHubAnalysis {
@@ -139,6 +145,8 @@ export interface LeaderboardRanking {
   projectId: string;
   projectName: string;
   teamName: string;
+  hackathonId?: string;
+  status?: "pending" | "evaluated";
   aiOverallScore: number | null;
   judgeAverageScore: number | null;
   combinedScore: number;
@@ -150,10 +158,14 @@ export interface Certificate {
   projectId: string;
   projectName: string;
   teamName: string;
+  hackathonId?: string;
   hackathonName?: string;
+  projectRank?: number | null;
+  combinedScore?: number | null;
+  totalHackathonEntries?: number | null;
   recipientEmail: string;
   recipientName: string;
-  role: string; // e.g. "Winner", "Runner-up", "Participant"
+  role: string; // e.g. "Grand Prize Winner", "First Runner-Up", "Official Participant"
   issuedAt: string;
   certificateCode: string;
 }

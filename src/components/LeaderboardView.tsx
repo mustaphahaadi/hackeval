@@ -76,7 +76,7 @@ export function LeaderboardView({ token, currentUser, onSelectProject }: Leaderb
     }
   };
 
-  const handleEvaluateAndRankAll = async () => {
+  const handleEvaluateAndRankAll = async (force = false) => {
     setError("");
     setSuccess("");
     setEvaluating(true);
@@ -91,7 +91,7 @@ export function LeaderboardView({ token, currentUser, onSelectProject }: Leaderb
       const res = await fetch("/api/evaluate-all", {
         method: "POST",
         headers,
-        body: JSON.stringify({ hackathonId: selectedHackathon.id })
+        body: JSON.stringify({ hackathonId: selectedHackathon.id, force })
       });
 
       const data = await res.json().catch(() => ({}));
@@ -100,7 +100,9 @@ export function LeaderboardView({ token, currentUser, onSelectProject }: Leaderb
       }
 
       setSuccess(
-        `Evaluated ${data.evaluatedCount} submissions for ${selectedHackathon.name} and updated composite rankings.`
+        data.evaluatedCount > 0
+          ? `Evaluated ${data.evaluatedCount} submission(s) for ${selectedHackathon.name}${data.skippedEvaluatedCount ? ` (preserved ${data.skippedEvaluatedCount} already-ranked projects)` : ""} and locked rankings.`
+          : `All submissions in ${selectedHackathon.name} are already graded; rankings remain locked.`
       );
       await fetchLeaderboard(selectedHackathon.id);
     } catch (err: any) {
@@ -268,23 +270,34 @@ export function LeaderboardView({ token, currentUser, onSelectProject }: Leaderb
             </button>
 
             {canEvaluate && (
-              <button
-                onClick={handleEvaluateAndRankAll}
-                disabled={evaluating || leaderboard.length === 0}
-                className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white rounded-lg text-xs font-bold shadow-sm cursor-pointer transition-colors"
-              >
-                {evaluating ? (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    Grading & Ranking...
-                  </>
-                ) : (
-                  <>
-                    <Play className="w-3.5 h-3.5 fill-current" />
-                    Analyze & Grade All
-                  </>
-                )}
-              </button>
+              <>
+                <button
+                  onClick={() => handleEvaluateAndRankAll(false)}
+                  disabled={evaluating || leaderboard.length === 0}
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white rounded-lg text-xs font-bold shadow-sm cursor-pointer transition-colors"
+                >
+                  {evaluating ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      Grading Pending...
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                      Grade Pending & Sync Ranks
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => handleEvaluateAndRankAll(true)}
+                  disabled={evaluating || leaderboard.length === 0}
+                  className="inline-flex items-center justify-center gap-1.5 px-3 py-2 border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-50 text-slate-700 rounded-lg text-xs font-semibold shadow-sm cursor-pointer transition-colors"
+                  title="Force full AI re-evaluation across every project"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${evaluating ? "animate-spin" : ""}`} />
+                  Re-grade All
+                </button>
+              </>
             )}
           </div>
         </div>

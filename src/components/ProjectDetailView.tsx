@@ -20,13 +20,12 @@ import {
   AlertTriangle,
   CheckSquare,
   Square,
-  Globe,
-  FileDown,
-  QrCode
+  Globe
 } from "lucide-react";
 import { Certificate, UserRole } from "../types";
 import { CertificateModal } from "./CertificateModal.js";
-import { downloadCertificatePdf } from "../utils/certificateGenerator.js";
+import { CertificateGeneratorStudio } from "./CertificateGeneratorStudio.js";
+import { CredentialCard } from "./CredentialCard.js";
 
 interface ProjectDetailViewProps {
   projectId: string;
@@ -34,6 +33,7 @@ interface ProjectDetailViewProps {
   currentUser: {
     id: string;
     name: string;
+    email?: string;
     role: UserRole;
   } | null;
   onBack: () => void;
@@ -132,11 +132,13 @@ export function ProjectDetailView({
   const [reviewSuccess, setReviewSuccess] = useState("");
   const [reviewError, setReviewError] = useState("");
 
-  // Certificate Modal & Download State
+  // Certificate Modal & Generation State
   const [selectedCert, setSelectedCert] = useState<Certificate | null>(null);
-  const [downloadingCertId, setDownloadingCertId] = useState<string | null>(null);
+  const [generatingCerts, setGeneratingCerts] = useState(false);
+  const [showCertBuilder, setShowCertBuilder] = useState(false);
 
   const canEvaluate = currentUser?.role === "Admin" || currentUser?.role === "Judge";
+  const isAdmin = currentUser?.role === "Admin";
 
   useEffect(() => {
     if (project && project.judgeReviews && currentUser) {
@@ -322,12 +324,35 @@ export function ProjectDetailView({
     }
   };
 
-  const handleDownloadCertificate = async (cert: Certificate) => {
-    setDownloadingCertId(cert.id);
+  const handleGenerateProjectCertificates = async () => {
+    if (!token) return;
+    setGeneratingCerts(true);
+    setError("");
+    setEvalSuccessMsg("");
     try {
-      await downloadCertificatePdf(cert);
+      const res = await fetch("/api/admin/certificates/project", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          projectId,
+          role: "auto"
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to generate project certificates.");
+      }
+      setEvalSuccessMsg(
+        `Issued ${data.issuedCount} verifiable Landscape A4 certificate(s) as "${data.role}".`
+      );
+      await fetchProjectDetails();
+    } catch (err: any) {
+      setError(err.message);
     } finally {
-      setDownloadingCertId(null);
+      setGeneratingCerts(false);
     }
   };
 
@@ -406,19 +431,75 @@ export function ProjectDetailView({
         <div className="lg:col-span-2 space-y-8">
           {/* Main Info Card */}
           <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-sm space-y-6">
-            <div>
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 mb-3">
-                Project Entry Details
-              </span>
-              <h1 className="text-2xl sm:text-3xl font-sans font-extrabold text-slate-950 tracking-tight">
-                {project.projectName}
-              </h1>
-              <p className="text-slate-600 text-sm font-semibold mt-1.5">
-                Submitted by Team:{" "}
-                <span className="text-indigo-600 font-bold">{project.teamName}</span>
-              </p>
-              {project.teamMembers && (
-                <p className="text-xs text-slate-500 mt-1">Members: {project.teamMembers}</p>
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                    Project Entry Details
+                  </span>
+                  {(project.hackathonName || project.hackathon?.name) && (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                      {project.hackathonName || project.hackathon?.name}
+                    </span>
+                  )}
+                </div>
+
+                {typeof project.officialRank === "number" && project.officialRank > 0 && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 font-mono text-xs font-extrabold">
+                    <Award className="w-3.5 h-3.5 text-amber-600" />
+                    Locked Standing: Rank #{project.officialRank}
+                    {project.totalHackathonEntries ? ` of ${project.totalHackathonEntries}` : ""}
+                  </span>
+                )}
+              </div>
+
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-sans font-extrabold text-slate-950 tracking-tight">
+                  {project.projectName}
+                </h1>
+                <p className="text-slate-600 text-sm font-semibold mt-1.5">
+                  Submitted by Team:{" "}
+                  <span className="text-indigo-600 font-bold">{project.teamName}</span>
+                </p>
+                {project.teamMembers && (
+                  <p className="text-xs text-slate-500 mt-1">
+                    Members:{" "}
+                    {project.teamMembers
+                      .split(",")
+                      .map((m: string) => m.trim())
+                      .filter(Boolean)
+                      .join(", ")}
+                  </p>
+                )}
+              </div>
+
+              {(project.aiOverallScore !== null || project.judgeAverageScore !== null || (project.combinedScore !== null && project.combinedScore > 0)) && (
+                <div className="grid grid-cols-3 gap-3 bg-slate-50 border border-slate-200/90 rounded-xl p-3.5">
+                  <div>
+                    <div className="text-[10px] font-mono font-bold uppercase text-slate-500">Composite Score</div>
+                    <div className="text-base font-mono font-extrabold text-slate-900 mt-0.5">
+                      {project.combinedScore !== null && project.combinedScore !== undefined
+                        ? `${project.combinedScore}/100`
+                        : "Pending"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-mono font-bold uppercase text-slate-500">AI Score (40%)</div>
+                    <div className="text-base font-mono font-bold text-indigo-700 mt-0.5">
+                      {project.aiOverallScore !== null && project.aiOverallScore !== undefined
+                        ? `${project.aiOverallScore}/100`
+                        : "Pending"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-mono font-bold uppercase text-slate-500">Judge Avg (60%)</div>
+                    <div className="text-base font-mono font-bold text-emerald-700 mt-0.5">
+                      {project.judgeAverageScore !== null && project.judgeAverageScore !== undefined
+                        ? `${project.judgeAverageScore}/100`
+                        : "Pending"}
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
 
@@ -507,66 +588,82 @@ export function ProjectDetailView({
             </div>
           </div>
 
-          {/* Official Verifiable Certificates Issued for this Project */}
-          {projectCerts.length > 0 && (
-            <div className="bg-white border border-indigo-200 rounded-2xl p-6 shadow-sm space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3.5">
-                <div className="flex items-center gap-2">
-                  <Award className="w-5 h-5 text-indigo-600" />
-                  <h2 className="font-sans font-bold text-slate-900 text-base">
-                    Official Verifiable Certificates ({projectCerts.length})
-                  </h2>
-                </div>
+          {/* Official Verifiable & Custom Certificates for this Project */}
+          <div className="bg-white border border-indigo-200 rounded-2xl p-6 shadow-sm space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3.5">
+              <div className="flex items-center gap-2">
+                <Award className="w-5 h-5 text-indigo-600" />
+                <h2 className="font-sans font-bold text-slate-900 text-base">
+                  Project Certificates ({projectCerts.length})
+                </h2>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[11px] font-mono text-slate-400">
                   Landscape A4 PDF + QR
                 </span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                {projectCerts.map((cert) => (
-                  <div
-                    key={cert.id}
-                    className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 flex flex-col justify-between gap-3"
+                <button
+                  type="button"
+                  onClick={() => setShowCertBuilder((prev) => !prev)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-sm transition-colors cursor-pointer"
+                >
+                  <Award className="w-3.5 h-3.5" />
+                  {showCertBuilder ? "Hide Certificate Studio" : "Generate Certificate"}
+                </button>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={handleGenerateProjectCertificates}
+                    disabled={generatingCerts}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-xs font-bold rounded-lg shadow-sm transition-colors cursor-pointer"
                   >
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md">
-                          {cert.role}
-                        </span>
-                        <span className="text-[11px] font-mono text-slate-500">
-                          {cert.certificateCode}
-                        </span>
-                      </div>
-                      <div className="text-sm font-bold text-slate-900 pt-1">
-                        {cert.recipientName}
-                      </div>
-                      <div className="text-xs text-slate-500 truncate">{cert.recipientEmail}</div>
-                    </div>
-
-                    <div className="flex items-center gap-2 pt-2 border-t border-slate-200/70">
-                      <button
-                        type="button"
-                        onClick={() => handleDownloadCertificate(cert)}
-                        disabled={downloadingCertId === cert.id}
-                        className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white text-xs font-semibold rounded-lg transition-colors cursor-pointer"
-                      >
-                        <FileDown className="w-3.5 h-3.5" />
-                        {downloadingCertId === cert.id ? "Generating..." : "Download A4 PDF"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedCert(cert)}
-                        className="inline-flex items-center justify-center gap-1 px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
-                      >
-                        <QrCode className="w-3.5 h-3.5" />
-                        Preview
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                    <Sparkles className="w-3.5 h-3.5" />
+                    {generatingCerts
+                      ? "Issuing Team Certs..."
+                      : projectCerts.length > 0
+                      ? "Quick Auto-Issue Team"
+                      : "Auto-Issue Team"}
+                  </button>
+                )}
               </div>
             </div>
-          )}
+
+            {showCertBuilder && (
+              <div className="bg-slate-50 border border-indigo-200/80 rounded-2xl p-4 sm:p-5">
+                <CertificateGeneratorStudio
+                  token={token}
+                  currentUser={currentUser}
+                  initialHackathonId={project.hackathonId}
+                  initialProject={project}
+                  compactModal={true}
+                  onCertificatesIssued={() => {
+                    fetchProjectDetails();
+                  }}
+                />
+              </div>
+            )}
+
+            {projectCerts.length === 0 ? (
+              !showCertBuilder && (
+                <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl p-5 text-center text-xs text-slate-500 space-y-1">
+                  <p className="font-semibold text-slate-700">No certificates issued for this project yet.</p>
+                  <p>
+                    Click <strong>Generate Certificate</strong> above to input recipient name, email, and award role, or auto-generate Landscape A4 credentials linked to this project's locked standing.
+                  </p>
+                </div>
+              )
+            ) : (
+                <div className="space-y-4">
+                  {projectCerts.map((cert) => (
+                    <div key={cert.id}>
+                      <CredentialCard
+                        certificate={cert}
+                        onPreview={(c) => setSelectedCert(c)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+          </div>
 
           {/* GitHub Analysis Analytics */}
           <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 shadow-sm space-y-6">

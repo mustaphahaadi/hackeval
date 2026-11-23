@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { Shield, Users, Award, Calendar, RefreshCw, AlertCircle, Check, Trash, Power, Download, Edit, Save, Search, FolderGit, ArrowLeft, Play, BarChart2, Eye, FileDown, UserPlus } from "lucide-react";
+import { Shield, Users, Award, Calendar, RefreshCw, AlertCircle, Check, Trash, Power, Download, Edit, Save, Search, FolderGit, ArrowLeft, Play, BarChart2, Eye, FileDown, UserPlus, Sparkles } from "lucide-react";
 import { User, HackathonEvent, ProjectSubmission, Certificate } from "../types";
 import { CertificateModal } from "./CertificateModal.js";
-import { downloadCertificatePdf } from "../utils/certificateGenerator.js";
+import { downloadCertificatePdf, getSuggestedAwardForRank } from "../utils/certificateGenerator.js";
 
 interface AdminDashboardProps {
   token: string;
+  onOpenCertStudio?: () => void;
 }
 
 const safeExternalUrl = (url?: string): string | null => {
@@ -18,7 +19,7 @@ const safeExternalUrl = (url?: string): string | null => {
   }
 };
 
-export function AdminDashboard({ token }: AdminDashboardProps) {
+export function AdminDashboard({ token, onOpenCertStudio }: AdminDashboardProps) {
   const [users, setUsers] = useState<User[]>([]);
   const [hackathons, setHackathons] = useState<HackathonEvent[]>([]);
   const [projects, setProjects] = useState<ProjectSubmission[]>([]);
@@ -98,19 +99,27 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
   const [exportLoading, setExportLoading] = useState(false);
   const [bulkLoading, setBulkLoading] = useState(false);
 
-  const handleBulkAIEvaluation = async () => {
+  const handleBulkAIEvaluation = async (force = false) => {
     setError("");
     setSuccess("");
     setBulkLoading(true);
     try {
       const res = await fetch("/api/evaluate-all", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` }
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ force })
       });
       if (!res.ok) throw new Error("Failed to execute bulk AI evaluation.");
       const data = await res.json();
-      setSuccess(`Success! The AI engine successfully analyzed code repositories and calculated grade cards for all ${data.evaluatedCount} projects.`);
-      fetchData(); // Refresh list to update scores instantly
+      setSuccess(
+        data.evaluatedCount > 0
+          ? `Evaluated ${data.evaluatedCount} submission(s)${data.skippedEvaluatedCount ? ` and preserved ${data.skippedEvaluatedCount} already-ranked project(s)` : ""}. Official rankings synced.`
+          : `All ${data.totalProjects ?? projects.length} projects already have AI evaluations; existing rankings remain locked.`
+      );
+      await fetchData(); // Refresh list to update scores instantly
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -118,22 +127,26 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
     }
   };
 
-  const handleAnalyzeAndRank = async (hkId: string) => {
+  const handleAnalyzeAndRank = async (hkId: string, force = false) => {
     setError("");
     setSuccess("");
     setRankLoading(true);
     try {
       const res = await fetch("/api/evaluate-all", {
         method: "POST",
-        headers: { 
+        headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}` 
+          Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({ hackathonId: hkId })
+        body: JSON.stringify({ hackathonId: hkId, force })
       });
       if (!res.ok) throw new Error("Failed to execute hackathon AI evaluation and ranking.");
       const data = await res.json();
-      setSuccess(`Success! The AI engine analyzed all ${data.evaluatedCount} submissions for this hackathon, scored them, and established the official rankings.`);
+      setSuccess(
+        data.evaluatedCount > 0
+          ? `Evaluated ${data.evaluatedCount} new/pending submission(s)${data.skippedEvaluatedCount ? ` while keeping ${data.skippedEvaluatedCount} previously graded project(s) unchanged` : ""}. Official rankings locked.`
+          : `All submissions in this event are already evaluated; official rankings verified and locked.`
+      );
       await fetchData(); // Refresh data to pull updated scores and statuses
     } catch (err: any) {
       setError(err.message);
@@ -143,10 +156,11 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
   };
 
   // Certificate form states
+  const [selectedCertHackathonId, setSelectedCertHackathonId] = useState("all");
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [certName, setCertName] = useState("");
   const [certEmail, setCertEmail] = useState("");
-  const [certRole, setCertRole] = useState("Grand Prize Winner");
+  const [certRole, setCertRole] = useState("auto");
   const [issuingCert, setIssuingCert] = useState(false);
   const [batchMode, setBatchMode] = useState(false);
   const [batchRecipients, setBatchRecipients] = useState<Array<{ name: string; email: string }>>([]);
@@ -231,7 +245,7 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
     }
   };
 
-  // Sync batch recipients list whenever selected project changes
+  // Sync batch recipients list & rank-aware award suggestion whenever selected project changes
   useEffect(() => {
     const proj = projects.find(p => p.id === selectedProjectId);
     if (!proj) {
@@ -244,11 +258,65 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
       .filter(Boolean);
     setBatchRecipients(
       members.map(mName => {
-        const matchedUser = users.find(u => u.name.toLowerCase() === mName.toLowerCase());
-        return { name: mName, email: matchedUser?.email || "" };
+        const matchedUser = users.find(u => u.name.trim().toLowerCase() === mName.toLowerCase());
+        const slug = mName.toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.|\.$/g, "") || "member";
+        return {
+          name: mName,
+          email: matchedUser?.email || `${slug}.${proj.id}@participant.hackeval.edu`
+        };
       })
     );
+    setCertRole(
+      getSuggestedAwardForRank(
+        proj.officialRank ?? null,
+        proj.status === "evaluated" || typeof proj.combinedScore === "number"
+      )
+    );
   }, [selectedProjectId, projects, users]);
+
+  const handleOpenCertsForProject = (proj: ProjectSubmission) => {
+    setSelectedCertHackathonId(proj.hackathonId || "all");
+    setSelectedProjectId(proj.id);
+    setSubTab("certs");
+    setError("");
+    setSuccess("");
+  };
+
+  const handleGenerateProjectTeamCertificates = async () => {
+    if (!selectedProjectId) return;
+    setError("");
+    setSuccess("");
+    setNewlyIssuedCert(null);
+    setIssuingCert(true);
+    try {
+      const res = await fetch("/api/admin/certificates/project", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          projectId: selectedProjectId,
+          role: certRole
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to generate project certificates.");
+      }
+      await fetchData();
+      if (data.certificates?.[0]) {
+        setNewlyIssuedCert(data.certificates[0]);
+      }
+      setSuccess(
+        `Generated ${data.issuedCount} project-linked A4 certificate(s) with designation "${data.role}".`
+      );
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIssuingCert(false);
+    }
+  };
 
   const handleIssueCertificate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -689,7 +757,7 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                 className="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold rounded-lg inline-flex items-center gap-1.5 cursor-pointer"
               >
                 <Eye className="w-3.5 h-3.5" />
-                Preview & QR
+                Preview A4 & QR
               </button>
             </div>
           )}
@@ -1024,30 +1092,42 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                       Command the AI evaluation engine to inspect GitHub repositories, parse source files, review documentation, and compute criteria scorecards for all registered submissions.
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleBulkAIEvaluation}
-                    disabled={bulkLoading || projects.length === 0}
-                    className="px-6 py-3 bg-white hover:bg-indigo-50 text-indigo-700 font-bold text-sm rounded-xl shadow transition-colors cursor-pointer inline-flex items-center gap-2 shrink-0 disabled:opacity-50"
-                  >
-                    {bulkLoading ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin text-indigo-600" />
-                        Running Evaluation Engine...
-                      </>
-                    ) : (
-                      <>
-                        <Shield className="w-4 h-4 text-indigo-600" />
-                        Grade All Submissions
-                      </>
-                    )}
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleBulkAIEvaluation(false)}
+                      disabled={bulkLoading || projects.length === 0}
+                      className="px-5 py-3 bg-white hover:bg-indigo-50 text-indigo-700 font-bold text-sm rounded-xl shadow transition-colors cursor-pointer inline-flex items-center gap-2 disabled:opacity-50"
+                    >
+                      {bulkLoading ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin text-indigo-600" />
+                          Running Evaluation Engine...
+                        </>
+                      ) : (
+                        <>
+                          <Shield className="w-4 h-4 text-indigo-600" />
+                          Grade Pending & Sync Ranks
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleBulkAIEvaluation(true)}
+                      disabled={bulkLoading || projects.length === 0}
+                      className="px-4 py-3 bg-indigo-800/70 hover:bg-indigo-800 text-white font-semibold text-xs rounded-xl border border-indigo-400/40 transition-colors cursor-pointer inline-flex items-center gap-1.5 disabled:opacity-50"
+                      title="Force Gemini re-evaluation on every project"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${bulkLoading ? "animate-spin" : ""}`} />
+                      Re-evaluate All
+                    </button>
+                  </div>
                 </div>
                 {bulkLoading && (
                   <div className="bg-indigo-800/40 p-4 rounded-xl border border-indigo-400/30">
                     <p className="text-xs text-indigo-100 font-medium flex items-center gap-2">
                       <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" />
-                      Analyzing codebases, parsing documents, and generating Gemini AI evaluation scorecards...
+                      Analyzing codebases, parsing documents, and locking deterministic rankings...
                     </p>
                   </div>
                 )}
@@ -1166,7 +1246,12 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                         ) : (
                           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                             <div className="space-y-1.5">
-                              <div className="flex items-center gap-2">
+                              <div className="flex flex-wrap items-center gap-2">
+                                {typeof proj.officialRank === "number" && proj.officialRank > 0 && (
+                                  <span className="inline-flex px-2 py-0.5 rounded text-[10px] font-mono font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                    Rank #{proj.officialRank}{typeof proj.combinedScore === "number" && proj.combinedScore > 0 ? ` · ${proj.combinedScore}/100` : ""}
+                                  </span>
+                                )}
                                 <h4 className="font-bold text-slate-900 text-sm">{proj.projectName}</h4>
                                 <span className={`inline-flex px-1.5 py-0.5 rounded text-[9px] font-extrabold uppercase ${
                                   proj.status === "evaluated" ? "bg-emerald-50 text-emerald-700 border border-emerald-100" : "bg-amber-50 text-amber-700 border border-amber-100"
@@ -1174,12 +1259,17 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                                   {proj.status === "evaluated" ? "Scored" : "Pending AI"}
                                 </span>
                               </div>
-                              <p className="text-xs text-slate-600 font-medium">Team: <span className="font-bold text-slate-800">{proj.teamName}</span></p>
+                              <p className="text-xs text-slate-600 font-medium">
+                                Team: <span className="font-bold text-slate-800">{proj.teamName}</span>
+                                {proj.hackathonName && (
+                                  <span className="text-slate-400"> · {proj.hackathonName}</span>
+                                )}
+                              </p>
                               
                               <div className="flex flex-wrap gap-1 mt-1">
-                                {(proj.teamMembers || "").split(",").map((m: string, idx: number) => (
+                                {(proj.teamMembers || "").split(",").map(m => m.trim()).filter(Boolean).map((m: string, idx: number) => (
                                   <span key={idx} className="bg-slate-100 text-slate-700 rounded text-[10px] px-2 py-0.5 font-medium border border-slate-200">
-                                    {m.trim()}
+                                    {m}
                                   </span>
                                 ))}
                               </div>
@@ -1191,6 +1281,14 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                             </div>
 
                             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 shrink-0 self-start md:self-center">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenCertsForProject(proj)}
+                                className="px-2.5 py-1 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg shadow-sm transition-all cursor-pointer inline-flex items-center gap-1"
+                              >
+                                <Award className="w-3.5 h-3.5" /> Issue Cert
+                              </button>
+
                               <button
                                 type="button"
                                 onClick={() => handleStartEdit(proj)}
@@ -1279,75 +1377,140 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
             </div>
           )}
 
-          {subTab === "certs" && (
+          {subTab === "certs" && (() => {
+            const certProjectsList = (
+              selectedCertHackathonId === "all"
+                ? projects
+                : projects.filter(p => p.hackathonId === selectedCertHackathonId)
+            ).slice().sort((a, b) => (a.officialRank || 999) - (b.officialRank || 999));
+
+            const selectedCertProj =
+              projects.find(p => p.id === selectedProjectId) || certProjectsList[0] || null;
+            const selectedCertHk = selectedCertProj
+              ? hackathons.find(h => h.id === selectedCertProj.hackathonId)
+              : null;
+            const totalInHk = selectedCertProj
+              ? projects.filter(p => p.hackathonId === selectedCertProj.hackathonId).length
+              : 0;
+            const parsedTeamRoster = (selectedCertProj?.teamMembers || "")
+              .split(",")
+              .map(m => m.trim())
+              .filter(Boolean);
+            const suggestedAward = selectedCertProj
+              ? getSuggestedAwardForRank(
+                  selectedCertProj.officialRank ?? null,
+                  selectedCertProj.status === "evaluated" ||
+                    typeof selectedCertProj.combinedScore === "number"
+                )
+              : "Grand Prize Winner (1st Place)";
+
+            return (
             <div className="space-y-8">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className="space-y-5">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                    <h3 className="font-sans font-bold text-slate-900 text-lg">Issue Verifiable Award</h3>
-                    <div className="inline-flex bg-slate-100 p-0.5 rounded-lg text-xs">
-                      <button
-                        type="button"
-                        onClick={() => setBatchMode(false)}
-                        className={`px-2.5 py-1 rounded-md font-semibold cursor-pointer transition-colors ${!batchMode ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600"}`}
-                      >
-                        Single
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setBatchMode(true)}
-                        className={`px-2.5 py-1 rounded-md font-semibold cursor-pointer transition-colors ${batchMode ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600"}`}
-                      >
-                        Team Batch
-                      </button>
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                    <h3 className="font-sans font-bold text-slate-900 text-lg">Issue Project-Linked Certificate</h3>
+                    <div className="flex items-center gap-2">
+                      {onOpenCertStudio && (
+                        <button
+                          type="button"
+                          onClick={onOpenCertStudio}
+                          className="px-2.5 py-1 rounded-md border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold cursor-pointer transition-colors"
+                        >
+                          Open Full Cert Studio
+                        </button>
+                      )}
+                      <div className="inline-flex bg-slate-100 p-0.5 rounded-lg text-xs">
+                        <button
+                          type="button"
+                          onClick={() => setBatchMode(false)}
+                          className={`px-2.5 py-1 rounded-md font-semibold cursor-pointer transition-colors ${!batchMode ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600"}`}
+                        >
+                          Single
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setBatchMode(true)}
+                          className={`px-2.5 py-1 rounded-md font-semibold cursor-pointer transition-colors ${batchMode ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600"}`}
+                        >
+                          Team Batch
+                        </button>
+                      </div>
                     </div>
+                  </div>
+
+                  {/* Optional Hackathon Filter */}
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Filter by Hackathon Event</label>
+                    <select
+                      value={selectedCertHackathonId}
+                      onChange={(e) => {
+                        const nextHkId = e.target.value;
+                        setSelectedCertHackathonId(nextHkId);
+                        const matching = (nextHkId === "all" ? projects : projects.filter(p => p.hackathonId === nextHkId))
+                          .slice()
+                          .sort((a, b) => (a.officialRank || 999) - (b.officialRank || 999));
+                        if (matching[0]) {
+                          setSelectedProjectId(matching[0].id);
+                        }
+                      }}
+                      className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+                    >
+                      <option value="all">All Hackathons ({projects.length} projects)</option>
+                      {hackathons.map(h => (
+                        <option key={h.id} value={h.id}>
+                          {h.name} ({projects.filter(p => p.hackathonId === h.id).length})
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">Select Project Submission</label>
                     <select
-                      value={selectedProjectId}
+                      value={selectedCertProj?.id || selectedProjectId}
                       onChange={(e) => setSelectedProjectId(e.target.value)}
-                      className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                      className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
                     >
-                      {projects.map((p) => (
+                      {certProjectsList.map((p) => (
                         <option key={p.id} value={p.id}>
-                          {p.projectName} (Team: {p.teamName})
+                          {typeof p.officialRank === "number" && p.officialRank > 0 ? `#${p.officialRank} · ` : ""}
+                          {p.projectName} ({p.teamName})
+                          {typeof p.combinedScore === "number" && p.combinedScore > 0 ? ` — ${p.combinedScore}/100` : ""}
                         </option>
                       ))}
                     </select>
                   </div>
 
                   {/* Quick auto-fill from project teamMembers */}
-                  {!batchMode && (() => {
-                    const selProj = projects.find(p => p.id === selectedProjectId);
-                    const members = (selProj?.teamMembers || "").split(",").map(m => m.trim()).filter(Boolean);
-                    if (members.length === 0) return null;
-                    return (
-                      <div className="space-y-1.5">
-                        <span className="text-[11px] font-semibold text-slate-500 block">Quick-fill from team roster:</span>
-                        <div className="flex flex-wrap gap-1.5">
-                          {members.map(m => {
-                            const matchedUser = users.find(u => u.name.toLowerCase() === m.toLowerCase());
-                            return (
-                              <button
-                                key={m}
-                                type="button"
-                                onClick={() => {
-                                  setCertName(m);
-                                  if (matchedUser?.email) setCertEmail(matchedUser.email);
-                                }}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-md text-xs font-semibold cursor-pointer transition-colors"
-                              >
-                                <UserPlus className="w-3 h-3" />
-                                {m}
-                              </button>
-                            );
-                          })}
-                        </div>
+                  {!batchMode && parsedTeamRoster.length > 0 && (
+                    <div className="space-y-1.5">
+                      <span className="text-[11px] font-semibold text-slate-500 block">Quick-fill from project team roster:</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {parsedTeamRoster.map(m => {
+                          const matchedUser = users.find(u => u.name.trim().toLowerCase() === m.toLowerCase());
+                          const slug = m.toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.|\.$/g, "") || "member";
+                          return (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => {
+                                setCertName(m);
+                                setCertEmail(
+                                  matchedUser?.email ||
+                                  `${slug}.${selectedCertProj?.id || "team"}@participant.hackeval.edu`
+                                );
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-md text-xs font-semibold cursor-pointer transition-colors"
+                            >
+                              <UserPlus className="w-3 h-3" />
+                              {m}
+                            </button>
+                          );
+                        })}
                       </div>
-                    );
-                  })()}
+                    </div>
+                  )}
 
                   {batchMode ? (
                     <form onSubmit={handleBatchIssueCertificates} className="space-y-4">
@@ -1358,12 +1521,15 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                           onChange={(e) => setCertRole(e.target.value)}
                           className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
                         >
-                          <option value="Grand Prize Winner">Grand Prize Winner</option>
-                          <option value="First Runner-up">First Runner-up</option>
+                          <option value="auto">Auto from Locked Rank ({suggestedAward})</option>
+                          <option value="Grand Prize Winner (1st Place)">Grand Prize Winner (1st Place)</option>
+                          <option value="First Runner-Up (2nd Place)">First Runner-Up (2nd Place)</option>
+                          <option value="Second Runner-Up (3rd Place)">Second Runner-Up (3rd Place)</option>
+                          <option value="Finalist & Merit Award">Finalist & Merit Award</option>
                           <option value="Best Technical Hack">Best Technical Hack</option>
                           <option value="Most Innovative AI Project">Most Innovative AI Project</option>
                           <option value="Honorable Mention">Honorable Mention</option>
-                          <option value="Valued Hackathon Participant">Valued Hackathon Participant</option>
+                          <option value="Official Hackathon Participant">Official Hackathon Participant</option>
                         </select>
                       </div>
 
@@ -1440,12 +1606,15 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                           onChange={(e) => setCertRole(e.target.value)}
                           className="w-full px-4 py-2 border border-slate-300 rounded-lg text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
                         >
-                          <option value="Grand Prize Winner">Grand Prize Winner</option>
-                          <option value="First Runner-up">First Runner-up</option>
+                          <option value="auto">Auto from Locked Rank ({suggestedAward})</option>
+                          <option value="Grand Prize Winner (1st Place)">Grand Prize Winner (1st Place)</option>
+                          <option value="First Runner-Up (2nd Place)">First Runner-Up (2nd Place)</option>
+                          <option value="Second Runner-Up (3rd Place)">Second Runner-Up (3rd Place)</option>
+                          <option value="Finalist & Merit Award">Finalist & Merit Award</option>
                           <option value="Best Technical Hack">Best Technical Hack</option>
                           <option value="Most Innovative AI Project">Most Innovative AI Project</option>
                           <option value="Honorable Mention">Honorable Mention</option>
-                          <option value="Valued Hackathon Participant">Valued Hackathon Participant</option>
+                          <option value="Official Hackathon Participant">Official Hackathon Participant</option>
                         </select>
                       </div>
 
@@ -1461,14 +1630,87 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                   )}
                 </div>
 
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-slate-600 text-xs space-y-4 self-start">
-                  <h4 className="font-bold text-slate-900 uppercase tracking-wider">Landscape A4 Certification Spec</h4>
-                  <p className="leading-relaxed">
-                    Every certificate issued generates a unique verification code (<span className="font-mono font-bold text-slate-800">CERT-XXXXXX</span>), attaches the hackathon event title, and becomes immediately verifiable on the public Credentials Ledger.
-                  </p>
-                  <p className="leading-relaxed">
-                    Recipients and administrators can export an archival <strong>Landscape A4 (297mm × 210mm) PDF</strong> or high-resolution PNG containing an embedded QR verification seal.
-                  </p>
+                {/* Right Column: Live Project Snapshot + 1-Click Auto-Generate for Full Team */}
+                <div className="space-y-4 self-start">
+                  {selectedCertProj && (
+                    <div className="bg-white border border-indigo-200 rounded-xl p-6 space-y-4 shadow-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-indigo-600">
+                            Selected Project Context
+                          </span>
+                          <h4 className="text-base font-extrabold text-slate-900 mt-0.5">
+                            {selectedCertProj.projectName}
+                          </h4>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            {selectedCertHk?.name || selectedCertProj.hackathonName || "Hackathon Event"} · Team{" "}
+                            <strong className="text-slate-700">{selectedCertProj.teamName}</strong>
+                          </p>
+                        </div>
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-indigo-50 border border-indigo-200 font-mono text-xs font-extrabold text-indigo-700 shrink-0">
+                          {typeof selectedCertProj.officialRank === "number" && selectedCertProj.officialRank > 0
+                            ? `Rank #${selectedCertProj.officialRank}/${totalInHk}`
+                            : "Unranked"}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2.5 text-center bg-slate-50 border border-slate-200 rounded-lg p-3">
+                        <div>
+                          <div className="text-[10px] font-bold uppercase text-slate-400">Combined</div>
+                          <div className="text-sm font-mono font-extrabold text-slate-900">
+                            {typeof selectedCertProj.combinedScore === "number" && selectedCertProj.combinedScore > 0
+                              ? `${selectedCertProj.combinedScore}/100`
+                              : "Pending"}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] font-bold uppercase text-slate-400">AI Score</div>
+                          <div className="text-sm font-mono font-bold text-indigo-700">
+                            {selectedCertProj.aiOverallScore ?? "Pending"}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[10px] font-bold uppercase text-slate-400">Judge Avg</div>
+                          <div className="text-sm font-mono font-bold text-emerald-700">
+                            {selectedCertProj.judgeAverageScore ?? "Pending"}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-xs text-slate-600 space-y-1">
+                        <div>
+                          <span className="font-bold text-slate-700">Suggested Award:</span>{" "}
+                          <span className="text-indigo-700 font-semibold">{suggestedAward}</span>
+                        </div>
+                        <div>
+                          <span className="font-bold text-slate-700">Team Roster:</span>{" "}
+                          {parsedTeamRoster.length > 0 ? parsedTeamRoster.join(", ") : selectedCertProj.teamName}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleGenerateProjectTeamCertificates}
+                        disabled={issuingCert}
+                        className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-xs font-bold rounded-lg text-white shadow-sm transition-colors cursor-pointer flex justify-center items-center gap-1.5"
+                      >
+                        <Sparkles className="w-4 h-4" />
+                        {issuingCert
+                          ? "Generating Project Certificates..."
+                          : `Auto-Issue A4 Certificates for Team (${Math.max(1, parsedTeamRoster.length)})`}
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 text-slate-600 text-xs space-y-3">
+                    <h4 className="font-bold text-slate-900 uppercase tracking-wider">Landscape A4 Certification Spec</h4>
+                    <p className="leading-relaxed">
+                      Every issued certificate binds permanently to the selected project's hackathon event, locked ranking (<span className="font-mono font-bold text-slate-800">Rank #X</span>), composite score, and unique verification code (<span className="font-mono font-bold text-slate-800">CERT-XXXXXX</span>).
+                    </p>
+                    <p className="leading-relaxed">
+                      Export print-ready <strong>Landscape A4 (297mm × 210mm) PDF</strong> or PNG files with embedded QR verification links.
+                    </p>
+                  </div>
                 </div>
               </div>
 
@@ -1486,7 +1728,7 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                         <tr>
                           <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Recipient</th>
                           <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Project / Event</th>
-                          <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Designation</th>
+                          <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Designation & Standing</th>
                           <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider">Code</th>
                           <th className="px-4 py-2.5 font-bold text-slate-500 uppercase tracking-wider text-right">Actions</th>
                         </tr>
@@ -1500,12 +1742,21 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                             </td>
                             <td className="px-4 py-3">
                               <div className="text-slate-900 font-semibold">{cert.projectName}</div>
-                              <div className="text-[11px] text-slate-500">Team: {cert.teamName}</div>
+                              <div className="text-[11px] text-slate-500">
+                                {cert.hackathonName || "HackEval Hackathon"} · Team: {cert.teamName}
+                              </div>
                             </td>
                             <td className="px-4 py-3">
-                              <span className="inline-flex items-center px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-bold">
-                                {cert.role}
-                              </span>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-bold">
+                                  {cert.role}
+                                </span>
+                                {typeof cert.projectRank === "number" && cert.projectRank > 0 && (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 font-mono text-[10px] font-bold">
+                                    #{cert.projectRank}{typeof cert.combinedScore === "number" && cert.combinedScore > 0 ? ` · ${cert.combinedScore}` : ""}
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             <td className="px-4 py-3 font-mono text-[11px] font-semibold text-indigo-700">{cert.certificateCode}</td>
                             <td className="px-4 py-3 text-right">
@@ -1527,7 +1778,7 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                                   }}
                                   className="text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-2 py-1 rounded transition-colors font-semibold inline-flex items-center gap-1 cursor-pointer"
                                 >
-                                  <Eye className="w-3.5 h-3.5" /> View
+                                  <Eye className="w-3.5 h-3.5" /> Preview A4 & QR
                                 </button>
                                 {confirmDeleteCertId === cert.id ? (
                                   <div className="inline-flex items-center gap-1 bg-rose-50 border border-rose-200 rounded-md p-1">
@@ -1566,7 +1817,8 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                 )}
               </div>
             </div>
-          )}
+            );
+          })()}
 
           {subTab === "events" && (
             selectedHk ? (
@@ -1683,23 +1935,34 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                     </div>
 
                     {/* Mass AI Evaluation & Ranking for this event */}
-                    <button
-                      onClick={() => handleAnalyzeAndRank(selectedHk.id)}
-                      disabled={rankLoading}
-                      className="w-full md:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-xl font-bold text-sm shadow-md transition-all cursor-pointer shrink-0"
-                    >
-                      {rankLoading ? (
-                        <>
-                          <RefreshCw className="w-4 h-4 animate-spin" />
-                          Ranking All submissions...
-                        </>
-                      ) : (
-                        <>
-                          <Play className="w-4 h-4 fill-current" />
-                          Run Autonomous Grading & Rankings
-                        </>
-                      )}
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2 shrink-0 w-full md:w-auto">
+                      <button
+                        onClick={() => handleAnalyzeAndRank(selectedHk.id, false)}
+                        disabled={rankLoading}
+                        className="flex-1 md:flex-initial inline-flex items-center justify-center gap-2 px-5 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-xl font-bold text-sm shadow-md transition-all cursor-pointer"
+                      >
+                        {rankLoading ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                            Grading Pending...
+                          </>
+                        ) : (
+                          <>
+                            <Play className="w-4 h-4 fill-current" />
+                            Grade Pending & Lock Ranks
+                          </>
+                        )}
+                      </button>
+                      <button
+                        onClick={() => handleAnalyzeAndRank(selectedHk.id, true)}
+                        disabled={rankLoading}
+                        className="inline-flex items-center justify-center gap-1.5 px-3.5 py-3 bg-white hover:bg-slate-100 border border-slate-300 text-slate-700 rounded-xl font-semibold text-xs shadow-sm transition-all cursor-pointer"
+                        title="Re-evaluate all projects in this event"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${rankLoading ? "animate-spin" : ""}`} />
+                        Re-grade All
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -1823,28 +2086,39 @@ export function AdminDashboard({ token }: AdminDashboardProps) {
                                     Run AI Grade
                                   </button>
                                   
-                                  <button
-                                    onClick={() => {
-                                      if (reviewingProjId === item.projectId) {
-                                        setReviewingProjId(null);
-                                      } else {
-                                        setReviewingProjId(item.projectId);
-                                        setReviewIdea(80);
-                                        setReviewInnovation(80);
-                                        setReviewCodeQuality(80);
-                                        setReviewReadme(80);
-                                        setReviewUi(80);
-                                        setReviewAiUsage(80);
-                                        setReviewTechnical(80);
-                                        setReviewFeedback("");
-                                      }
-                                    }}
-                                    className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-md flex items-center gap-1 cursor-pointer transition-colors"
-                                  >
-                                    <Edit className="w-3.5 h-3.5" />
-                                    {reviewingProjId === item.projectId ? "Cancel Review" : "Submit Jury Scorecard"}
-                                  </button>
-                                </div>
+                                    <button
+                                      onClick={() => {
+                                        if (reviewingProjId === item.projectId) {
+                                          setReviewingProjId(null);
+                                        } else {
+                                          setReviewingProjId(item.projectId);
+                                          setReviewIdea(80);
+                                          setReviewInnovation(80);
+                                          setReviewCodeQuality(80);
+                                          setReviewReadme(80);
+                                          setReviewUi(80);
+                                          setReviewAiUsage(80);
+                                          setReviewTechnical(80);
+                                          setReviewFeedback("");
+                                        }
+                                      }}
+                                      className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-md flex items-center gap-1 cursor-pointer transition-colors"
+                                    >
+                                      <Edit className="w-3.5 h-3.5" />
+                                      {reviewingProjId === item.projectId ? "Cancel Review" : "Submit Jury Scorecard"}
+                                    </button>
+
+                                    {fullProj && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenCertsForProject(fullProj)}
+                                        className="px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 font-bold rounded-md flex items-center gap-1 cursor-pointer transition-colors"
+                                      >
+                                        <Award className="w-3.5 h-3.5" />
+                                        Issue Cert
+                                      </button>
+                                    )}
+                                  </div>
 
                                 <div>
                                   {confirmDeleteProjId === item.projectId ? (

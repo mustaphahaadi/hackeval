@@ -72,7 +72,12 @@
         "presentationDocUrl": { "type": "string" },
         "hackathonId": { "type": "string" },
         "createdAt": { "type": "string" },
-        "status": { "type": "string" }
+        "status": { "type": "string" },
+        "officialRank": { "type": "number" },
+        "combinedScore": { "type": "number" },
+        "aiOverallScore": { "type": "number" },
+        "judgeAverageScore": { "type": "number" },
+        "rankUpdatedAt": { "type": "string" }
       },
       "required": ["id", "projectName", "teamName", "description", "hackathonId", "status"]
     },
@@ -141,7 +146,11 @@
         "projectId": { "type": "string" },
         "projectName": { "type": "string" },
         "teamName": { "type": "string" },
+        "hackathonId": { "type": "string" },
         "hackathonName": { "type": "string" },
+        "projectRank": { "type": "number" },
+        "combinedScore": { "type": "number" },
+        "totalHackathonEntries": { "type": "number" },
         "recipientEmail": { "type": "string" },
         "recipientName": { "type": "string" },
         "role": { "type": "string" },
